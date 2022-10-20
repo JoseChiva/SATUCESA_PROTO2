@@ -1,0 +1,74 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Cambio Stock
+# Gestión de la máscara VXASC (Especifico)
+
+######################################################################################
+## Después de campo ZCODBAR
+######################################################################################
+Subprog AP_ZCODBAR(VALEUR)
+Variable Char    VALEUR()
+
+Call LEERCODIGODEBARRASCAMBIOSTOCK(VALEUR) From SPEUTILSATUCESA
+
+If num$(ZLCODLOT) <> "-" and num$(ZLCODITM)<> "-" and num$(ZLCANT)<>"0"
+  [M:XASC]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+  Affzo [M:XASC]ZCODBAR
+Endif
+
+End
+
+######################################################################################
+## Antes de entrada ITMREF
+######################################################################################
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:XASC]ITMREF = ZLCODITM
+Affzo [M:XASC]ITMREF
+End
+
+######################################################################################
+## Antes de entrada QTYPCU
+######################################################################################
+Subprog AS_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+#[M:XASC]QTYPCU = ZLCANT
+#Affzo [M:XASC]QTYPCU
+End
+######################################################################################
+## Antes de entrada LOT
+######################################################################################
+Subprog AS_LOT(VALEUR)
+Variable Char    VALEUR()
+[M:XASC]LOT = ZLCODLOT
+Affzo [M:XASC]LOT
+End
+
+######################################################################################
+## Antes de entrada LOC (Ubicación)
+######################################################################################
+Subprog AS_LOC(VALEUR)
+Variable Char    VALEUR()
+End
+
+######################################################################################
+## Antes de entrada PCU (UE Unidad envasado)
+######################################################################################
+Subprog AS_PCU(VALEUR)
+Variable Char    VALEUR()
+[M:XASC]PCU= "PAL"
+Affzo [M:XASC]PCU
+End
+######################################################################################
+
+######################################################################################
+## Antes de entrada PCUSTUCOE
+######################################################################################
+Subprog AS_PCUSTUCOE(VALEUR)
+Variable Decimal VALEUR
+[M:XASC]PCUSTUCOE = ZLCANT
+Affzo [M:XASC]PCUSTUCOE
+End
+
+
+######################################################################################
+

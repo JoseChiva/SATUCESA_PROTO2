@@ -1,0 +1,216 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)10.0.0.0 $Revision$
+#########################################################################
+# BONRCP : Impression du bon de réception achats                        #
+# --------------------------------------------------------------------- #
+# Chargement des paramètres et mise à jour de l'indicateur d'impression #
+#########################################################################
+
+Subprog IMPRIME(NBPAR,PARAMETRE)
+Value    Integer NBPAR
+Variable Char    PARAMETRE()()
+
+Call EXEC(NBPAR,PARAMETRE)
+
+End
+
+#########################################################################
+
+Subprog EXEC(NBPAR,PARAMETRE)
+Value    Integer NBPAR
+Variable Char    PARAMETRE()()
+
+Local Integer IMPR
+# ajout borne dates de réception achat 23/04/2008 SYMEU
+Local Date DATREF
+
+Gosub OUVRE
+If GERREUR : GERREUR=0 : End : Endif
+Gosub DECLARE
+
+[L]CRITERE = "1=1"
+For I=1 To NBPAR
+ J=instr(1,[L]PARAMETRE(I),"=")
+ If J
+  [L]PARAM  = left$([L]PARAMETRE(I),J-1)
+ #[L]VALEUR = right$([L]PARAMETRE(I),J+1)
+  Call GETPARAM([L]PARAM,NBPAR,PARAMETRE,[L]VALEUR) From ETAT
+  Case [L]PARAM
+   When "X3ETA"           : [L]ETAT = [L]VALEUR
+   When "__REQUETE"       : [L]NUMREQ = val([L]VALEUR)
+   When "receptiondeb"    : [L]CRITERE -= "& PTHNUM>='"+[L]VALEUR+"'"
+   When "receptionfin"    : [L]CRITERE -= "& PTHNUM<='"+[L]VALEUR+"'"
+   When "fournisseurdeb"  : [L]CRITERE -= "& BPSNUM>='"+[L]VALEUR+"'"
+   When "fournisseurfin"  : [L]CRITERE -= "& BPSNUM<='"+[L]VALEUR+"'"
+   When "sitedeb"         : [L]CRITERE -= "& PRHFCY>='"+[L]VALEUR+"'"
+   When "sitefin"         : [L]CRITERE -= "& PRHFCY<='"+[L]VALEUR+"'"
+   # ajout borne dates de réception achat 23/04/2008 SYMEU
+   When "datedeb"         : [L]DATREF   =  gdat$(val(right$([L]VALEUR,7)),
+&                                          val(seg$([L]VALEUR,5,6)),val(left$([L]VALEUR,4)))
+                            [L]CRITERE -= "& RCPDAT >=["+format$(GFMD,[L]DATREF)+']'
+   When "datefin"         : [L]DATREF   =  gdat$(val(right$([L]VALEUR,7)),
+&                                          val(seg$([L]VALEUR,5,6)),val(left$([L]VALEUR,4)))
+                            [L]CRITERE -= "& RCPDAT <=["+format$(GFMD,[L]DATREF)+']'
+#AELIS   When "codimp"          : [L]CRITERE -= "& PRNFLG="+num$([L]VALEUR)
+                                             [L]IMPR = val([L]VALEUR)
+   # Issue 110704
+   # Issue 110704 - 2016-01-12 by RICAR : Updating the parameters
+   When "numedt"         : [L]PARAMETRE(I) = "numedt="+num$([L]NUMREQ)
+   When "seqedt"         : [L]PARAMETRE(I) = "seqedt=0"
+   When "usr"            : [L]PARAMETRE(I) = "usr="+GUSER
+   When "etat"           : [L]PARAMETRE(I) = "etat="+[L]ETAT
+   # End issue 110704
+  Endcase
+ Endif
+Next
+# Issue 89114 - 2013-04-04 by SR : etat enchaine
+Look [ARM]ARM0 = [L]NUMREQ;GUSER;[F:ARP]RPTCOD;1
+If !fstat
+  # Enreg trouvé, car lancement enchainé
+  # On bloque la boucle
+  End
+  #On laisse GOK=1 sinon l'état ne sort pas
+Endif
+
+#----------------------------------------------#
+Filter [PTH] Where evalue([L]CRITERE)
+Gosub TRT_PTH
+End
+
+#########################################################################
+
+$TRT_PTH
+Raz WNUMLIG
+Default File [PTH]
+For [PTH] PTH0
+   Call DEBTRANS From GLOCK
+   If [L]IMPR = 1
+    Gosub TR1
+   Else
+    Gosub TR2
+   Endif
+Next
+Return
+
+#########################################################################
+
+$TR1
+Trbegin [PTH] , [ARM], [TPRPT]
+# Mise à jour table entête réception si demande d'impression
+If [L]IMPR = 1
+ Readlock [PTH] PTH0 Curr
+ If fstat = 1 : GOK = -1 : GLOCK = "$PRECEIPT" : Goto ROLL_TR1
+ Elsif fstat  : GOK = 0 : Call RSTA("PTH","*") From GLOCK : Goto AB_TR1
+ Endif
+ [F:PTH]PRNFLG = 2
+ Rewrite [PTH]
+ If fstat=1
+  GOK=-1 : GLOCK="$PRECEIPT"-[F:PTH]PTHNUM
+  Goto ROLL_TR1
+ Elsif fstat
+  GOK=0 : Call RSTA("PRECEIPT",[F:PTH]PTHNUM) From GLOCK : Goto AB_TR1
+ Endif
+Endif
+
+#Création de l'enregistrement dans la table AREPORTM
+WNUMLIG      += 1
+
+Raz [F:ARM]
+[F:ARM]USR     = GUSER
+[F:ARM]RPTCOD  = [F:ARP]RPTCOD
+[F:ARM]NUMREQ  = [L]NUMREQ
+[F:ARM]NUMLIG  = WNUMLIG
+[F:ARM]CLEA1   = [F:PTH]PTHNUM
+[F:ARM]CREDAT  = date$
+Write [F:ARM]
+If fstat : GOK = 0 : Call FSTA("ARM") From GLOCK : Goto AB_TR1 : Endif
+
+# Issue 110704
+# Issue 110704 - 2015-12-22 by RICAR : Updating the parameters
+If [L]CKPO = 1
+ Gosub ALIM_TMPPRPT
+ If GOK = 0 : Goto AB_TR1 : Endif
+Endif
+# End issue 110704
+
+Commit
+Return
+
+$ROLL_TR1
+Rollback : Call ROLL From GLOCK
+If GROLL : Return : Else : Goto TR1 : Endif
+
+$AB_TR1
+Rollback
+Return
+
+#########################################################################
+
+$TR2
+Trbegin [ARM], [TPRPT]
+#Création de l'enregistrement dans la table AREPORTM
+WNUMLIG      += 1
+
+Raz [F:ARM]
+[F:ARM]USR     = GUSER
+[F:ARM]RPTCOD  = [F:ARP]RPTCOD
+[F:ARM]NUMREQ  = [L]NUMREQ
+[F:ARM]NUMLIG  = WNUMLIG
+[F:ARM]CLEA1   = [F:PTH]PTHNUM
+[F:ARM]CREDAT  = date$
+Write [F:ARM]
+If fstat : GOK = 0 : Call FSTA("ARM") From GLOCK : Goto AB_TR2 : Endif
+
+# Issue 110704
+# Issue 110704 - 2015-12-22 by RICAR : Updating the parameters
+If [L]CKPO = 1
+ Gosub ALIM_TMPPRPT
+ If GOK = 0 : Goto AB_TR2 : Endif
+Endif
+# End issue 110704
+
+Commit
+Return
+
+$ROLL_TR2
+Rollback : Call ROLL From GLOCK
+If GROLL : Return : Else : Goto TR2 : Endif
+
+$AB_TR2
+Rollback
+Return
+
+#########################################################################
+
+$OUVRE
+Local File PRECEIPT [PTH], AREPORTM [ARM]
+# BRBAN 25/11/2014 - 97101
+Local File TMPPRPT    [TPRPT]
+
+Local Integer CKPO : [L]CKPO = 0
+
+Return
+
+$DECLARE
+Local Char    CRITERE(255), PARAM(30) , VALEUR(30) , ETAT(15)
+Local Integer WNUMLIG, NUMREQ
+
+If func AFNC.ACTIV("KPO")
+  [L]CKPO = 1
+Endif
+
+Return
+#########################################################################
+$ALIM_TMPPRPT
+
+Raz [F:TPRPT]
+
+[F:TPRPT] = [F:ARM]
+[F:TPRPT]VCRNUM = [F:PTH]PTHNUM
+
+Write [F:TPRPT]
+If fstat : GOK=0 : Call FSTA("TPRPT") From GLOCK : Endif
+
+Return
+#########################################################################
+

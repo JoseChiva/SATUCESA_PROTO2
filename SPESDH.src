@@ -1,0 +1,119 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Gestión de la máscara SDH1 (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla SDH1) 19/02/2018 16:10:50 (ADMIN)
+######################################################################################
+$ACTION
+Case ACTION
+ When Default
+Endcase
+Return
+
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+  If !clalev([F:ZITM]) : Local File ZITMMASTER [ZITM] : Endif
+  Read [ZITM]ZITM0 = VALEUR
+  If !fstat
+    [M:SDH1]ZCODALTERNA(nolign-1) = [F:ZITM]ZCODALTERNA
+    Affzo [M:SDH1]ZCODALTERNA(nolign-1)
+  Endif
+
+End
+
+Subprog AM_SAU(VALEUR)
+Variable Char    VALEUR()
+
+#  If VALEUR = "PAL"
+#    [M:SDH1]ZBULTOS(nolign-1) = [M:SDH1]QTY(nolign-1)
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+#
+#  If VALEUR = "UN"
+#    Local Decimal DIVISION
+#    Local Integer BULTOS
+#    DIVISION = [M:SDH1]QTY(nolign-1)/[F:ITM]PCUSTUCOE
+#    If (DIVISION - (fix(DIVISION))>0)
+#      BULTOS = fix(DIVISION)+1
+#    Else
+#      BULTOS = fix(DIVISION)
+#    Endif
+#    [M:SDH1]ZBULTOS(nolign-1) = BULTOS
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+
+End
+
+Subprog AM_QTY(VALEUR)
+Variable Decimal VALEUR
+
+#  If [M:SDH1]SAU(nolign-1) = "PAL"
+#    [M:SDH1]ZBULTOS(nolign-1) = VALEUR
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+#
+#  If [M:SDH1]SAU(nolign-1) = "UN"
+#    Local Decimal DIVISION
+#    Local Integer BULTOS
+#    DIVISION = VALEUR/[F:ITM]PCUSTUCOE
+#    If (DIVISION - (fix(DIVISION))>0)
+#      BULTOS = fix(DIVISION)+1
+#    Else
+#      BULTOS = fix(DIVISION)
+#    Endif
+#    [M:SDH1]ZBULTOS(nolign-1) = BULTOS
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+
+End
+
+Subprog AM_SAUSTUCOE(VALEUR)
+Variable Decimal VALEUR
+
+#  If [M:SDH1]SAU(nolign-1) = "PAL"
+#    [M:SDH1]ZBULTOS(nolign-1) = [M:SDH1]QTY(nolign-1)
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+#
+#  If [M:SDH1]SAU(nolign-1) = "UN"
+#    Local Decimal DIVISION
+#    Local Integer BULTOS
+#    DIVISION = [M:SDH1]QTY(nolign-1)/VALEUR
+#    If (DIVISION - (fix(DIVISION))>0)
+#      BULTOS = fix(DIVISION)+1
+#    Else
+#      BULTOS = fix(DIVISION)
+#    Endif
+#    [M:SDH1]ZBULTOS(nolign-1) = BULTOS
+#    Affzo [M:SDH1]ZBULTOS(nolign-1)
+#  Endif
+
+End
+
+
+######################################################################################
+
+######################################################################################
+## Después de campo QTY
+##
+######################################################################################
+Subprog AP_QTY(VALEUR)
+Variable Decimal VALEUR
+If [M:SDH1]SAU = 'UN'
+  If !clalev([ZITM]) : Local File ITMMASTER [ZITM] : Endif
+    Filter [F:ZITM] Where ITMREF = [M:SDH1]ITMREF
+    Read [F:ZITM] First
+    If fstat = 0   # exito (encontrado)
+      ZNUMEROSACOS = [F:ZITM]PCUSTUCOE
+      If VALEUR/ZNUMEROSACOS - int(VALEUR/ZNUMEROSACOS) > 0 Then
+        Wrnbox('LAS UNIDADES SELECCIONADAS NO CORRESPONDEN A NINGUN PALET, ASEGURESE DE QUE ES CORRECTO')
+      Endif
+  Endif
+Endif
+
+End
+
+
+######################################################################################
+

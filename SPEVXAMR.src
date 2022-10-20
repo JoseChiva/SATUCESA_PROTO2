@@ -1,0 +1,40 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Entradas varias
+# Gestión de la máscara VXAMR1 (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla VXAMR1) 19/01/2018 09:57:38 (ADMIN)
+######################################################################################
+Subprog AP_ZCODBAR(VALEUR)
+Variable Char    VALEUR()
+
+Call LEERCODIGODEBARRASENTRADAVARIA(VALEUR) From SPEUTILSATUCESA
+
+If num$(ZLCODLOT) <> "-" and num$(ZLCODITM)<> "-" and num$(ZLCANT)<>"0"
+  [M:XAMR1]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+  Affzo [M:XAMR1]ZCODBAR
+Endif
+End
+##==========================
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:XAMR1]ITMREF = ZLCODITM
+Affzo [M:XAMR1]ITMREF
+End
+##==========================
+Subprog AS_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+[M:XAMR1]QTYPCU = ZLCANT
+Affzo [M:XAMR1]QTYPCU
+End
+##===========================
+Subprog AS_LOT(VALEUR)
+Variable Char    VALEUR()
+[M:XAMR1]LOT = ZLCODLOT
+Affzo [M:XAMR1]LOT
+End
+
+
+
+######################################################################################
+

@@ -1,0 +1,603 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)0.0.0.0 $Revision$
+####################################################################################
+# Program Name: VXAPR
+# Description : ADC PO Receipt
+# Author      : Deutschbauer/Bromley/MBT
+# Date        : March 1st, 2006 and March 12th, 2007
+####################################################################################
+
+Local Char PARAM(10)(1..2) , VALEUR(10)
+Call SAISIE_CHAR(VALEUR,PARAM,"VXAPR1","VXAPR1","XYVXAPR") From GSAISIE
+End
+
+########################################################
+# Purchase Receipt
+########################################################
+#
+# Necessary field in the VT Screen
+# --------------------------------
+# POHNUM, POPLIN, POQSEQ, ITMREF, UOM, QTYUOM, STU, QTYSTU, UOMSTUCOE,
+# STA, LOC, LOCTYP, LOT, SLO, SLOF, BPSLOT, GESLOT, NBSLO
+# WSOLDE, PRHFCY, RCPDAT, BPSNUM,
+# PALNUM, CTRNUM, SERNUM, SERNUMF, TCLCOD, WSTOSEQ, WLOCSEQ
+#
+# Necessary value in Entry transaction
+# ------------------------------------
+# Field 'Auto print'     --> No
+# Field 'Form'           --> No auto print
+# Block 'Lot': all field --> No
+#
+# XAPR is the VT screen
+#
+########################################################
+
+
+$ACTION
+#--- Actions liées à la fenêtre de saisie
+
+Case ACTION
+ When "OUVRE"         : Gosub OUVRE
+ When "DEBUT"         : Gosub DEBUT
+ When "SETBOUT"       : Gosub SETBOUT
+ When "AVANT_OK"      : Gosub AVANT_OK
+ When "OK"            : Gosub OK
+ When "CRE"           : Gosub CRE
+ When "APRES_CRE"     : Gosub APRES_CRE
+ When "END"           : Gosub CHECK
+ When "FIN"           : Gosub FIN
+ When "BOUTON"        : Gosub BOUTON
+Endcase
+Return
+
+
+########################################################
+# Actions liées à la fenètre de saisie
+########################################################
+
+
+########################################################
+$OUVRE
+GVTMOD=1
+Gosub INIT_STOFCY From ENVADC
+Gosub OUVRE_PTH   From ENVADC
+Return
+
+
+########################################################
+$DEBUT
+Gosub DEBUT_PTH From ENVADC
+#----- Verify that the ADC site is set -----#
+If GXAFCY=""
+  Call ERREUR(mess(16,7750,1)) From GESECRAN : FIN=1 : Return
+Endif
+#----- Verify that a purchase receipt transaction exist -----#
+GFLAG=func ENVADC.SETPURTRANS(6)
+If GFLAG=""
+  Call ERREUR(mess(29,7750,1)) From GESECRAN : FIN=1 : Return
+Endif
+#-----
+GPTRNUM=GFLAG
+Gosub INIT_SCREEN
+Return
+
+
+########################################################
+$SETBOUT
+Return
+
+
+########################################################
+$BOUTON
+Case BOUT
+  When "1" : Gosub CRE
+  When "2" : Gosub ABA
+Endcase
+Return
+
+########################################################
+$ABA
+
+Gosub INIT_SCREEN
+#zonsui="[M:APR0]POHNUM"      #Aelis
+zonsui="[M:APR0]ZCODBARPED"   #Aelis
+Return
+
+########################################################
+$AVANT_OK
+If [M:APR1]ITMREF="" | [M:APR1]BPSNUM="" | [M:APR1]UOM="" | [M:APR1]QTYUOM<=0
+  If [M:APR1]ITMREF=""
+    GMESSAGE=mess(14,195,1)
+    #zonsui="[M:APR1]ITMREF"   #Aelis
+    zonsui="[M:APR1]ZCODBAR"    #Aelis
+  Elsif [M:APR1]BPSNUM=""
+    GMESSAGE=mess(530,197,1) : zonsui="[M:APR1]BPSNUM"
+  Elsif [M:APR1]UOM=""
+    GMESSAGE=mess(397,198,1) : zonsui="[M:APR1]UOM"
+  Elsif [M:APR1]QTYUOM<=0
+    GMESSAGE=mess(33,105,1)  : zonsui="[M:APR1]QTYUOM"
+  Endif
+  GERR=1 : GMESSAGE-=":"-mess(17,7750,1) : Return
+Endif
+Return
+
+
+########################################################
+$OK
+#----- Check for PO being locked -----#
+If [M:APR0]POHNUM<>""
+  Lock="POH"+[M:APR0]POHNUM
+  If fstat
+    GMESSAGE="$PORDER"-[M:APR0]POHNUM-mess(30,7750,1) : GERR=1
+    #zonsui="[M:APR0]POHNUM"    #Aelis
+    zonsui="[M:APR0]ZCODBARPED" #Aelis
+    Return
+  Endif
+Endif
+#-----
+Gosub OK_PTH From ENVADC
+If GOUVENT>1
+  Call GETERR_GOUVENT(GOUVENT,GMESSAGE) From ENVADC
+Endif
+If GOUVENT>1 | mkstat
+  #----- Déblocage logique de la commande si nécessaire -----#
+  If [M:APR0]POHNUM<>""
+    Unlock="POH"+[M:APR0]POHNUM
+  Endif
+  #-----
+  Raz [M:APR1]POPLIN, [M:APR1]POQSEQ, [M:APR1]ITMREF, [M:APR1]UOM, [M:APR1]QTYUOM
+  Raz [M:APR1]STA,    [M:APR1]LOC,    [M:APR1]BPSLOT, [M:APR1]LOT, [M:APR1]SLO
+  Raz [M:APR1]SERNUM, [M:APR1]WSOLDE
+  Affzo [APR1]1-99
+  GERR=1
+  #zonsui="[M:APR1]ITMREF"   #Aelis
+  zonsui="[M:APR1]ZCODBAR"    #Aelis
+  Return
+Endif
+
+If [F:ITM]LOTMGTCOD>1
+   Call PEREMPTION_LOT("APR1","PTH1") From ENVADC
+Endif
+
+# Issue 92266 - 2013-09-09 by MUARN : landed cost
+If [M:PTH1]STCNUM([M:PTH1]NBLIG-1) <>""
+  Call ALIM_STCD([M:PTH1]NBLIG-1) From ENVADC
+Endif
+
+#-----
+If [M:APR1]WSOLDE=2
+  Raz [M:APR0]
+  Raz [M:APR1]
+  If [M:PTH1]POHNUM([M:PTH1]NBLIG-1)<>""
+    If [F:POH]POHNUM<>[M:PTH1]POHNUM([M:PTH1]NBLIG-1)
+      Read [POH] POH0=[M:PTH1]POHNUM([M:PTH1]NBLIG-1) : If fstat  Raz [F:POH] : Endif
+    Endif
+    If [F:POH]LINNBR-[F:POH]CLELINNBR>1
+      [M:APR0]POHNUM=[M:PTH1]POHNUM([M:PTH1]NBLIG-1)
+    Endif
+  Endif
+Else
+  Raz [M:APR0]
+  Raz [M:APR1]
+  [M:APR0]POHNUM=[M:PTH1]POHNUM([M:PTH1]NBLIG-1)
+Endif
+#-----
+[M:APR0]PTRNUM=GFLAG
+[M:APR1]PRHFCY=[M:PTH0]PRHFCY
+[M:APR1]RCPDAT=[M:PTH0]RCPDAT
+[M:APR1]BPSNUM=[M:PTH0]BPSNUM
+Actzo [APR0]1-99
+Actzo [APR1]1-99
+Diszo [APR1]BPSNUM
+Affzo [APR1]1-99
+Affzo [APR0]1-99
+#-----
+If [M:APR0]POHNUM=""
+  #zonsui="[M:APR0]POHNUM"    #Aelis
+  zonsui="[M:APR0]ZCODBARPED" #Aelis
+Else
+  #zonsui="[M:APR1]ITMREF"   #Aelis
+  zonsui="[M:APR1]ZCODBAR"    #Aelis
+Endif
+#-----
+Return
+
+
+########################################################
+$CRE
+#----- Si article renseigné, enregistrement de la saisie (bouton OK) -----#
+If [M:APR1]ITMREF<>""
+  Gosub AVANT_OK
+  If GERR=1  Return : Endif
+  Gosub OK
+  If GERR=1  Return : Endif
+Endif
+#----- Saisie incomplète -----#
+If [M:PTH1]NBLIG=0
+  Call ERREUR(mess(17,7750,1)) From GESECRAN
+  #zonsui="[M:APR0]POHNUM"    #Aelis
+  zonsui="[M:APR0]ZCODBARPED" #Aelis
+  Return
+Endif
+#-----
+#[M:PTH0]BPSNDE="ADC"
+[M:PTH0]NDEDAT=date$
+Call CRE_PTH From ENVADC
+#-----
+If !GOK
+  #-----  Creation Failed: No Receipt Lines Created -----#
+  Call ERREUR(mess(31,7750,1)) From GESECRAN
+Endif
+
+#--- Lot V01
+#-----impression des étiquettes ----#
+If [F:PTR]PRNCOD1 = 2
+   Call PRINT_ETI(GXAFCY,6,[M:PTH0]PTHNUM) From STKADC
+Endif
+#---
+
+#--- Lot V01
+#----- Impression bon de réception -----#
+If [F:PTR]DOCFLG=2
+  If [F:PTR]DOCNAM<>""
+    #--- Relecture fournisseur si nécessaire -----#
+    If [F:BPS]BPSNUM<>[M:PTH0]BPSNUM
+      Read [BPS] BPS0=[M:PTH0]BPSNUM : If fstat  Raz [F:BPS] : Endif
+    Endif
+    If [F:BPS]NREPRNFLG=2
+      Local Char LPTR
+      Call ALIM_PRNDOC([F:PTR]DOCNAM,LPTR) From STKADC
+      If LPTR<>""
+        Call TEMPON(mess(144,100,1)) From GESECRAN
+        Local Char TBPAR(10)(1..50), TBVAL(30)(1..50)
+        Call ETAT([F:PTR]DOCNAM,LPTR,GLANGUE,0,"",TBPAR,TBVAL) From AIMP3
+        Sleep 3
+        Call TEMPOFF     From GESECRAN
+      Else
+        Call ERREUR(mess(501,9137,1)) From GESECRAN
+      Endif
+    Endif
+  Else
+    Call ERREUR(mess(100,187,1)) From GESECRAN
+  Endif
+Endif
+#---
+
+GPROGRAMME = "GSAISIE"
+GBOITE     = BOITE
+Call NOMTRTWIN(GBOITE,WINPROG) From MSKDIV
+Gosub DEFVAR From= WINPROG
+GNOLIG = 0
+Gosub INIT_SCREEN
+#zonsui="[M:APR0]POHNUM"    #Aelis
+zonsui="[M:APR0]ZCODBARPED" #Aelis
+Return
+
+########################################################
+$APRES_CRE
+#If [F:PTR]PRNCOD1 = 2
+#  Local Char WPARAM(GLONVCR)(1..4) , WVALEUR(10)
+#  WPARAM(1) = GXAFCY
+#  WPARAM(2) = num$(6)
+#  WPARAM(3) = [M:PTH0]PTHNUM
+#  Call TRAITE_CHAR(WVALEUR,WPARAM,"VXSTOLB","VXAPR1","",4,"SPEVXAPR") From GTRAITE
+#Endif
+Return
+########################################################
+$FIN
+Gosub FIN_PTH From ENVADC
+GVTMOD=0
+Return
+
+
+########################################################
+$CHECK
+#----- Check to see if user has any uncreated receipt -----#
+If [M:PTH1]NBLIG>0
+  If (dim([V]GCONF)>0 & [V]GCONF(3)<>2) | REP=""
+    Call OUINON(mess(32,7750,1),OK) From GESECRAN
+    If OK<>2  FIN=0  : Return  : Endif
+  Endif
+  Gosub DEVERROU_POH From SUBPTHA
+Endif
+Return
+
+
+########################################################
+$INIT_SCREEN
+GFCY=GXAFCY
+Gosub RAZ_PTH From ENVADC
+Raz [M:APR0]
+Raz [M:APR1]
+[M:APR0]PTRNUM=GFLAG
+[M:APR1]PRHFCY=[M:PTH0]PRHFCY
+[M:APR1]RCPDAT=[M:PTH0]RCPDAT
+Actzo [APR0]1-99
+Affzo [APR0]1-99
+Actzo [APR1]1-99
+Affzo [APR1]1-99
+
+nolign=0
+Default Mask [APR0]
+GREP="" : REP=""
+Return
+
+
+########################################################
+# Actions champs
+########################################################
+
+
+########################################################
+Subprog AM_PTRNUM(VALEUR)
+Variable Char    VALEUR()
+GPTRNUM=VALEUR
+GFLAG  =VALEUR
+If [F:PTR]PTRTYP<>6 | [F:PTR]PTRNUM<>GPTRNUM
+  Read [PTR] PTR0=6;GPTRNUM : If fstat  Raz [F:PTR] : Endif
+Endif
+[M:PTH0]TRSCOD=[F:PTR]TRSCOD
+[M:PTH0]ENTCOD=[F:PTR]ENTCOD
+If [F:PTR]SPERFLG <> 2            # hcb  60191
+   Diszo  [M:APR1]SHLDAT
+Endif
+
+End
+
+
+########################################################
+Subprog AM_POHNUM(VALEUR)
+Variable Char    VALEUR()
+
+Gosub AM_POHNUM_PTH From ENVADC
+End
+
+
+########################################################
+Subprog IB_ITMREF
+If [M:APR0]POHNUM="" & GPTHDIR=2
+  GBOUTS=mess(18,100,1)  : # Sélection
+Else
+  GBOUTS=mess(351,198,1) : # Sélection lignes de commandes
+Endif
+End
+
+
+########################################################
+Subprog S_ITMREF(VALEUR)
+Variable Char    VALEUR
+#-----
+Local Integer OK
+If [M:APR0]POHNUM="" & GPTHDIR=2
+  Call OUINON(mess(37,7750,1),OK) From GESECRAN
+Else
+  OK=2
+Endif
+#-----
+Local Char PARMSK(250)(1..20), SAVACT(20)
+If OK=2
+  SAVACT=GACTION : GACTION="SELPOQITM"
+  PARMSK(1)=[M:APR1]PRHFCY
+  PARMSK(2)=[M:APR1]BPSNUM
+  PARMSK(3)=[M:APR0]POHNUM
+  PARMSK(4)=num$([M:APR1]POPLIN)
+  PARMSK(5)=num$([M:APR1]POQSEQ)
+  Call S_TAB_CHAR(VALEUR,PARMSK,"SELPOQITM","TRTACHSEL1","") From GACTION
+  [M:APR1]PRHFCY=PARMSK(1)
+  [M:APR1]BPSNUM=PARMSK(2)
+  [M:APR0]POHNUM=PARMSK(3)
+  [M:APR1]POPLIN=val(PARMSK(4))
+  [M:APR1]POQSEQ=val(PARMSK(5))
+#                                                          # hcb 71276 deb
+  If dim([M:APR1]ECCVALMAJORI)>0
+     [M:APR1]ECCVALMAJORI  = [F:POQ]ECCVALMAJ   # version majeure origine
+     [M:APR1]ECCVALMINORI  = [F:POQ]ECCVALMIN   # version mineure origine
+  Endif
+#                                                          # hcb 71276 fin
+
+  GACTION=SAVACT
+Else
+  SAVACT=GACTION : GACTION="SELITF"
+  PARMSK(1)=[M:APR1]PRHFCY
+  # Issue 102135 - 2014-08-19 by SR : Retour sur fiche 95491
+  # Issue 95491 - 2014-01-31 by SR : Pas sous-traitance
+  PARMSK(2)="134589"
+  PARMSK(3)=""
+  PARMSK(4)="1234"
+  PARMSK(5)=""
+  PARMSK(6)=""
+  PARMSK(7)="[F:ITM]RCPFLG=2"
+  Call S_TAB_CHAR(VALEUR,PARMSK,"SELITF","STKSEL","") From GACTION
+  GACTION=SAVACT
+Endif
+#-----
+End
+
+
+########################################################
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+Gosub AS_ITMREF_PTH From ENVADC
+End
+
+
+########################################################
+Subprog C_ITMREF(VALEUR)
+Variable Char    VALEUR()
+If VALEUR=""  mkstat=1 : End : Endif
+# Issue 102135 - 2014-08-19 by SR : retour sur fiche 95491
+# Issue 95491 - 2014-01-31 by SR : Réception VT interdite pour les articles de sous-traitance
+#If [F:ITM]SCPFLG = 2 | [F:ITM]SCSFLG = 2
+#   Call ERREUR(mess(42,7750,1)) From GESECRAN
+#   mkstat=1
+#   End
+#Endif
+End
+
+
+########################################################
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+Gosub AM_ITMREF_PTH From ENVADC
+End
+
+
+########################################################
+Subprog AM_POPLIN(VALEUR)
+Variable Decimal  VALEUR
+Gosub AM_POPLIN_PTH From ENVADC
+End
+
+
+########################################################
+Subprog AS_BPSNUM(VALEUR)
+Variable Char    VALEUR()
+If ([M:PTH0]BPSNUM<>"" & [M:PTH1]NBLIG>0) | [M:APR0]POHNUM<>""  mkstat=2 : End : Endif
+End
+
+
+########################################################
+Subprog C_BPSNUM(VALEUR)
+Variable Char    VALEUR()
+If VALEUR=""  mkstat=1 : End : Endif
+End
+
+
+########################################################
+Subprog AM_BPSNUM(VALEUR)
+Variable Char    VALEUR()
+Gosub AM_BPSNUM_PTH From ENVADC
+End
+
+
+########################################################
+Subprog C_UOM(VALEUR)
+Variable Char    VALEUR()
+If VALEUR=""  mkstat=1 : End : Endif
+End
+
+
+########################################################
+Subprog AM_UOM(VALEUR)
+Variable Char    VALEUR()
+Gosub AM_UOM_PTH From ENVADC
+End
+
+
+########################################################
+Subprog C_QTYUOM(VALEUR)
+Variable Decimal VALEUR
+If VALEUR<=0  mkstat=1 : End : Endif
+End
+
+
+########################################################
+Subprog AM_QTYUOM(VALEUR)
+Variable Decimal VALEUR
+Gosub AM_QTYUOM_PTH From ENVADC
+End
+
+
+########################################################
+Subprog C_SLO(VALEUR)
+Variable Char    VALEUR()
+Gosub C_SLO_PTH From ENVADC
+End
+
+
+######################################################################################
+## Etiquette ajoutée par le superviseur (écran VXAPR1) 05/09/2008 09:19:30 (MAE)
+######################################################################################
+Subprog AM_LOT(VALEUR)
+Variable Char    VALEUR()
+
+# Si uniquement gestion de lot et lot existant, pas d'accès à la péremption
+If find([F:ITM]LOTMGTCOD,2,3)
+   Read [F:STL]STL0=[M:APR1]ITMREF;VALEUR;""
+   If fstat
+      Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",[M:APR1]SHLDAT) From STKLIB
+      If [F:PTR]SPERFLG <> 2            # hcb  60191
+         Diszo  [M:APR1]SHLDAT
+      Else
+         Actzo [M:APR1]SHLDAT
+      Endif
+   Else
+      [M:APR1]SHLDAT = [F:STL]SHLDAT
+      Diszo [M:APR1]SHLDAT
+   Endif
+   Affzo [M]SHLDAT
+Endif
+
+End
+
+Subprog AM_SLO(VALEUR)
+Variable Char    VALEUR()
+
+# Si gestion de lot/sous-lot et lot existant, pas d'accès à la péremption
+If [F:ITM]LOTMGTCOD=4
+   Read [F:STL]STL0=[M:APR1]ITMREF;[M:APR1]LOT;VALEUR
+   If fstat
+      Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",[M:APR1]SHLDAT) From STKLIB
+      If [F:PTR]SPERFLG <> 2            # hcb  60191
+         Diszo  [M:APR1]SHLDAT
+      Else
+         Actzo [M:APR1]SHLDAT
+      Endif
+   Else
+      [M:APR1]SHLDAT = [F:STL]SHLDAT
+      Diszo [M:APR1]SHLDAT
+   Endif
+   Affzo [M]SHLDAT
+Endif
+End
+
+########################################################
+Subprog AS_SHLDAT(VALEUR)
+Variable Date    VALEUR
+
+If [F:ITM]EXYMGTCOD > 1 & VALEUR = [0/0/0]
+   Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",VALEUR) From STKLIB
+Endif
+End
+
+Subprog C_SHLDAT(VALEUR)
+Variable Date    VALEUR
+
+If VALEUR > [31/12/2999]
+  mkstat = 2
+Endif
+If [F:ITM]EXYMGTCOD > 1 & VALEUR = [0/0/0]
+   mkstat = 2
+Endif
+End
+#                                                                         # hcb 71276 deb
+Subprog C_LOT(VALEUR)
+Variable Char    VALEUR()
+If VALEUR <> [M]LOT
+   Raz [M]ECCVALMAJ
+   Raz [M]ECCVALMIN
+Endif
+
+End
+#                                                                         # hcb 71276 fin
+######################################################################################
+
+$GRABALOGACCION
+
+Local Integer SIZE
+SIZE = filinfo("_vrdx3log", 7)
+If SIZE < 0 :           # El fichero no existe
+  Openo "_vrdx3log"     # se abre y se crea
+  adxifs=";"
+Else                    # el fichero existe
+  Openo                 # cierra el archivo
+  Openo "_vrdx3log",-1  # se abre en modo append
+  adxifs=";"
+Endif
+Wrseq(ACTION)
+
+Openo
+Return
+
+######################################################################################
+

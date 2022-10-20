@@ -1,0 +1,275 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ Recepciones
+# Recepciones X3
+# Gestión de la máscara PTH1 (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla PTH1) 09/01/2018 10:43:28 (ADMIN)
+######################################################################################
+$ACTION
+#Call REGISTRAACCION(ACTION+"--"+GREP) From SPEUTILSATUCESA
+
+Case ACTION
+  When "FIN_PICK" : Gosub FIN_PICK
+  When "AVANT_CHOI" : Gosub AVANT_CHOI
+  When "APRES_CRE" :Gosub APRES_CRE
+  When "APRES_MOD" : Gosub APRES_MOD
+  When "PICKE"  :  Gosub PICKE
+  When Default : Gosub ASIGNALOTE
+Endcase
+Return
+
+#=========================
+$FIN_PICK
+FIN_PICK = 1  # Ha seleccionado el/los pedidos
+Return
+#===========================
+
+$AVANT_CHOI
+If FIN_PICK = 1
+  Gosub APRES_MODIF  From SUBPTHA
+  Gosub AAPRES_NBLIG From SUBPTH
+  Gosub BAPRES_NBLIG From SUBPTH
+  FIN_PICK = 0
+Endif
+Return
+
+################
+$ASIGNALOTE
+If dim(FIN_PICK) >=0
+Else
+  Global Integer FIN_PICK
+  FIN_PICK = 0
+Endif
+If dim(NBLIG)>=0
+  For N = 0 To NBLIG
+    If len([M:PTH1]POHNUM(N))>1
+      [M:PTH1]LOT(N) = [M:PTH1]POHNUM(N)
+      Affzo [M:PTH1]LOT(N)
+    Endif
+   #Call REGISTRAACCION("--------------------ASIGNALOTE------"+"--"+GREP) From SPEUTILSATUCESA
+   #Call REGISTRAACCION(ACTION+"--"+GREP) From SPEUTILSATUCESA
+  Next N
+Endif
+Return
+#########################
+
+
+######################################################################################
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla PTH1) 09/01/2018 13:03:50 (ADMIN)
+######################################################################################
+Subprog IB_POHNUM
+#Infbox('ahora')
+#[M:PTH1]LOT(nolign-1) = [M:PTH1]POHNUM(nolign-1)
+#Affzo [M:PTH1]LOT(nolign-1)
+
+End
+
+######################################################################################
+## Antes de entrada LOT
+######################################################################################
+Subprog AS_LOT(VALEUR)
+Variable Char    VALEUR()
+#[M:PTH1]LOT(nolign-1) = [M:PTH1]POHNUM(nolign-1)
+#Affzo [M:PTH1]LOT(nolign-1)
+End
+######################################################################################
+
+$LOGVALORES
+Local Integer SIZE
+SIZE = filinfo("vrdx3log", 7)
+If SIZE < 0 :         # El fichero no existe
+  Openo "vrdx3log"    # lo abro y se crea
+  adxifs=";"
+Else                  # el fichero existe
+  Openo               # cierra el archivo
+  Openo "vrdx3log",-1 # lo abro en modo append
+  adxifs=";"
+Endif
+Wrseq("============"+num$(ACTION)+"============")
+If dim([M:PTH1]TYPVCR      )>=0 : Wrseq("TYPVCR    - "+num$([M:PTH1]TYPVCR         )) : Endif
+If dim([M:PTH1]CLSVCR      )>=0 : Wrseq("CLSVCR    - "+num$([M:PTH1]CLSVCR         )) : Endif
+If dim([M:PTH1]SCUVCR      )>=0 : Wrseq("SCUVCR    - "+num$([M:PTH1]SCUVCR         )) : Endif
+If dim([M:PTH1]SEQVCR      )>=0 : Wrseq("SEQVCR    - "+num$([M:PTH1]SEQVCR         )) : Endif
+If dim([M:PTH1]CAI         )>=0 : Wrseq("CAI       - "+num$([M:PTH1]CAI            )) : Endif
+If dim([M:PTH1]DATVLYCAI   )>=0 : Wrseq("DATVLYCAI - "+num$([M:PTH1]DATVLYCAI      )) : Endif
+If dim([M:PTH1]NBLIG       )>=0 : Wrseq("NBLIG     - "+num$([M:PTH1]NBLIG          )) : Endif
+If dim([M:PTH1]POHNUM      )>=0 : Wrseq("POHNUM    - "+num$([M:PTH1]POHNUM         )) : Endif
+If dim([M:PTH1]POPLIN      )>=0 : Wrseq("POPLIN    - "+num$([M:PTH1]POPLIN         )) : Endif
+If dim([M:PTH1]ITMREF      )>=0 : Wrseq("ITMREF    - "+num$([M:PTH1]ITMREF         )) : Endif
+If dim([M:PTH1]ITMDES      )>=0 : Wrseq("ITMDES    - "+num$([M:PTH1]ITMDES         )) : Endif
+If dim([M:PTH1]ITMDES1     )>=0 : Wrseq("ITMDES1   - "+num$([M:PTH1]ITMDES1        )) : Endif
+If dim([M:PTH1]UOM         )>=0 : Wrseq("UOM       - "+num$([M:PTH1]UOM            )) : Endif
+If dim([M:PTH1]QTYUOM      )>=0 : Wrseq("QTYUOM    - "+num$([M:PTH1]QTYUOM         )) : Endif
+If dim([M:PTH1]UOMSTUCOE   )>=0 : Wrseq("UOMSTUCOE - "+num$([M:PTH1]UOMSTUCOE      )) : Endif
+If dim([M:PTH1]RRRQTYSTU   )>=0 : Wrseq("RRRQTYSTU - "+num$([M:PTH1]RRRQTYSTU      )) : Endif
+If dim([M:PTH1]WRH         )>=0 : Wrseq("WRH       - "+num$([M:PTH1]WRH            )) : Endif
+If dim([M:PTH1]STA         )>=0 : Wrseq("STA       - "+num$([M:PTH1]STA            )) : Endif
+If dim([M:PTH1]LOCTYP      )>=0 : Wrseq("LOCTYP    - "+num$([M:PTH1]LOCTYP         )) : Endif
+If dim([M:PTH1]LOC         )>=0 : Wrseq("LOC       - "+num$([M:PTH1]LOC            )) : Endif
+If dim([M:PTH1]BPSLOT      )>=0 : Wrseq("BPSLOT    - "+num$([M:PTH1]BPSLOT         )) : Endif
+If dim([M:PTH1]LOT         )>=0 : Wrseq("LOT       - "+num$([M:PTH1]LOT            )) : Endif
+If dim([M:PTH1]NBSLO       )>=0 : Wrseq("NBSLO     - "+num$([M:PTH1]NBSLO          )) : Endif
+If dim([M:PTH1]SLO         )>=0 : Wrseq("SLO       - "+num$([M:PTH1]SLO            )) : Endif
+If dim([M:PTH1]SERNUM      )>=0 : Wrseq("SERNUM    - "+num$([M:PTH1]SERNUM         )) : Endif
+If dim([M:PTH1]PALNUM      )>=0 : Wrseq("PALNUM    - "+num$([M:PTH1]PALNUM         )) : Endif
+If dim([M:PTH1]CTRNUM      )>=0 : Wrseq("CTRNUM    - "+num$([M:PTH1]CTRNUM         )) : Endif
+If dim([M:PTH1]WSOLDE      )>=0 : Wrseq("WSOLDE    - "+num$([M:PTH1]WSOLDE         )) : Endif
+If dim([M:PTH1]WSHDSOLDE   )>=0 : Wrseq("WSHDSOLDE - "+num$([M:PTH1]WSHDSOLDE      )) : Endif
+If dim([M:PTH1]PJT         )>=0 : Wrseq("PJT       - "+num$([M:PTH1]PJT            )) : Endif
+If dim([M:PTH1]GROPRI      )>=0 : Wrseq("GROPRI    - "+num$([M:PTH1]GROPRI         )) : Endif
+If dim([M:PTH1]DISCRGVAL1  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL1     )) : Endif
+If dim([M:PTH1]DISCRGVAL2  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL2     )) : Endif
+If dim([M:PTH1]DISCRGVAL3  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL3     )) : Endif
+If dim([M:PTH1]DISCRGVAL4  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL4     )) : Endif
+If dim([M:PTH1]DISCRGVAL5  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL5     )) : Endif
+If dim([M:PTH1]DISCRGVAL6  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL6     )) : Endif
+If dim([M:PTH1]DISCRGVAL7  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL7     )) : Endif
+If dim([M:PTH1]DISCRGVAL8  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL8     )) : Endif
+If dim([M:PTH1]DISCRGVAL9  )>=0 : Wrseq("DISCRGVAL - "+num$([M:PTH1]DISCRGVAL9     )) : Endif
+If dim([M:PTH1]CPRCOE      )>=0 : Wrseq("CPRCOE    - "+num$([M:PTH1]CPRCOE         )) : Endif
+If dim([M:PTH1]CPRAMT      )>=0 : Wrseq("CPRAMT    - "+num$([M:PTH1]CPRAMT         )) : Endif
+If dim([M:PTH1]CPR         )>=0 : Wrseq("CPR       - "+num$([M:PTH1]CPR            )) : Endif
+If dim([M:PTH1]MVTDES      )>=0 : Wrseq("MVTDES    - "+num$([M:PTH1]MVTDES         )) : Endif
+If dim([M:PTH1]TRSFAM      )>=0 : Wrseq("TRSFAM    - "+num$([M:PTH1]TRSFAM         )) : Endif
+If dim([M:PTH1]LINACC1     )>=0 : Wrseq("LINACC1   - "+num$([M:PTH1]LINACC1        )) : Endif
+If dim([M:PTH1]LINACC2     )>=0 : Wrseq("LINACC2   - "+num$([M:PTH1]LINACC2        )) : Endif
+If dim([M:PTH1]LINACC3     )>=0 : Wrseq("LINACC3   - "+num$([M:PTH1]LINACC3        )) : Endif
+If dim([M:PTH1]LINACC4     )>=0 : Wrseq("LINACC4   - "+num$([M:PTH1]LINACC4        )) : Endif
+If dim([M:PTH1]LINACC5     )>=0 : Wrseq("LINACC5   - "+num$([M:PTH1]LINACC5        )) : Endif
+If dim([M:PTH1]LINACC6     )>=0 : Wrseq("LINACC6   - "+num$([M:PTH1]LINACC6        )) : Endif
+If dim([M:PTH1]LINACC7     )>=0 : Wrseq("LINACC7   - "+num$([M:PTH1]LINACC7        )) : Endif
+If dim([M:PTH1]LINACC8     )>=0 : Wrseq("LINACC8   - "+num$([M:PTH1]LINACC8        )) : Endif
+If dim([M:PTH1]LINACC9     )>=0 : Wrseq("LINACC9   - "+num$([M:PTH1]LINACC9        )) : Endif
+If dim([M:PTH1]LINACC10    )>=0 : Wrseq("LINACC10  - "+num$([M:PTH1]LINACC10       )) : Endif
+If dim([M:PTH1]LINPURTYP   )>=0 : Wrseq("LINPURTYP - "+num$([M:PTH1]LINPURTYP      )) : Endif
+If dim([M:PTH1]CCE1        )>=0 : Wrseq("CCE1      - "+num$([M:PTH1]CCE1           )) : Endif
+If dim([M:PTH1]CCE2        )>=0 : Wrseq("CCE2      - "+num$([M:PTH1]CCE2           )) : Endif
+If dim([M:PTH1]CCE3        )>=0 : Wrseq("CCE3      - "+num$([M:PTH1]CCE3           )) : Endif
+If dim([M:PTH1]CCE4        )>=0 : Wrseq("CCE4      - "+num$([M:PTH1]CCE4           )) : Endif
+If dim([M:PTH1]CCE5        )>=0 : Wrseq("CCE5      - "+num$([M:PTH1]CCE5           )) : Endif
+If dim([M:PTH1]CCE6        )>=0 : Wrseq("CCE6      - "+num$([M:PTH1]CCE6           )) : Endif
+If dim([M:PTH1]CCE7        )>=0 : Wrseq("CCE7      - "+num$([M:PTH1]CCE7           )) : Endif
+If dim([M:PTH1]CCE8        )>=0 : Wrseq("CCE8      - "+num$([M:PTH1]CCE8           )) : Endif
+If dim([M:PTH1]CCE9        )>=0 : Wrseq("CCE9      - "+num$([M:PTH1]CCE9           )) : Endif
+If dim([M:PTH1]CCE10       )>=0 : Wrseq("CCE10     - "+num$([M:PTH1]CCE10          )) : Endif
+If dim([M:PTH1]CCE11       )>=0 : Wrseq("CCE11     - "+num$([M:PTH1]CCE11          )) : Endif
+If dim([M:PTH1]CCE12       )>=0 : Wrseq("CCE12     - "+num$([M:PTH1]CCE12          )) : Endif
+If dim([M:PTH1]CCE13       )>=0 : Wrseq("CCE13     - "+num$([M:PTH1]CCE13          )) : Endif
+If dim([M:PTH1]CCE14       )>=0 : Wrseq("CCE14     - "+num$([M:PTH1]CCE14          )) : Endif
+If dim([M:PTH1]CCE15       )>=0 : Wrseq("CCE15     - "+num$([M:PTH1]CCE15          )) : Endif
+If dim([M:PTH1]CCE16       )>=0 : Wrseq("CCE16     - "+num$([M:PTH1]CCE16          )) : Endif
+If dim([M:PTH1]CCE17       )>=0 : Wrseq("CCE17     - "+num$([M:PTH1]CCE17          )) : Endif
+If dim([M:PTH1]CCE18       )>=0 : Wrseq("CCE18     - "+num$([M:PTH1]CCE18          )) : Endif
+If dim([M:PTH1]CCE19       )>=0 : Wrseq("CCE19     - "+num$([M:PTH1]CCE19          )) : Endif
+If dim([M:PTH1]CCE20       )>=0 : Wrseq("CCE20     - "+num$([M:PTH1]CCE20          )) : Endif
+If dim([M:PTH1]MATTOL      )>=0 : Wrseq("MATTOL    - "+num$([M:PTH1]MATTOL         )) : Endif
+If dim([M:PTH1]EECINCRAT   )>=0 : Wrseq("EECINCRAT - "+num$([M:PTH1]EECINCRAT      )) : Endif
+If dim([M:PTH1]ORICRY      )>=0 : Wrseq("ORICRY    - "+num$([M:PTH1]ORICRY         )) : Endif
+If dim([M:PTH1]VAT1        )>=0 : Wrseq("VAT1      - "+num$([M:PTH1]VAT1           )) : Endif
+If dim([M:PTH1]VAT2        )>=0 : Wrseq("VAT2      - "+num$([M:PTH1]VAT2           )) : Endif
+If dim([M:PTH1]VAT3        )>=0 : Wrseq("VAT3      - "+num$([M:PTH1]VAT3           )) : Endif
+If dim([M:PTH1]TAXRCP      )>=0 : Wrseq("TAXRCP    - "+num$([M:PTH1]TAXRCP         )) : Endif
+If dim([M:PTH1]TAXISS      )>=0 : Wrseq("TAXISS    - "+num$([M:PTH1]TAXISS         )) : Endif
+If dim([M:PTH1]TAXOTH1     )>=0 : Wrseq("TAXOTH1   - "+num$([M:PTH1]TAXOTH1        )) : Endif
+If dim([M:PTH1]TAXOTH2     )>=0 : Wrseq("TAXOTH2   - "+num$([M:PTH1]TAXOTH2        )) : Endif
+If dim([M:PTH1]QTYWEU      )>=0 : Wrseq("QTYWEU    - "+num$([M:PTH1]QTYWEU         )) : Endif
+If dim([M:PTH1]QTYVOU      )>=0 : Wrseq("QTYVOU    - "+num$([M:PTH1]QTYVOU         )) : Endif
+If dim([M:PTH1]LINCAT      )>=0 : Wrseq("LINCAT    - "+num$([M:PTH1]LINCAT         )) : Endif
+Openo
+Return
+
+$RECORREFILAS
+Local Integer SIZE
+SIZE = filinfo("vrdrecorrefilas", 7)
+If SIZE < 0 :         # El fichero no existe
+  Openo "vrdrecorrefilas"    # se abre y se crea
+  adxifs=";"
+Else                  # el fichero existe
+  Openo               # se cierra
+  Openo "vrdrecorrefilas",-1 # se abre en modo append
+  adxifs=";"
+Endif
+
+Wrseq("============"+num$(ACTION+"--"+CREP)+"============")
+#If dim(N      )>=0 : Wrseq("N    - "+num$(N        )) : Endif
+#If dim(NBLIG      )>=0 : Wrseq("NBLIG    - "+num$(NBLIG        )) : Endif
+#If dim([M:PTH1]LOT(NBLIG)      )>=0 : Wrseq("LOT    - "+num$([M:PTH1]LOT(NBLIG)         )) : Endif
+#If dim([M:PTH1]POHNUM(NBLIG)      )>=0 : Wrseq("POHNUM    - "+num$([M:PTH1]POHNUM(NBLIG)         )) : Endif
+Openo
+
+Return
+######################################################################################
+
+
+
+
+##AUREN 05-01-2021 CUANDO SELECCIONAMOS UNA LINEA DESDE EXPEDICIÓN, SI NO ESTÁ SALDADA LA SALDAMOS
+#########################################################################################
+#########################################################################################
+$APRES_CRE
+  Gosub ACTUALIZA_EXP
+Return
+
+$APRES_MOD
+  Gosub ACTUALIZA_EXP
+Return
+
+$ACTUALIZA_EXP
+#abrimos tablas expediciones
+If !clalev([F:ZSDH]) Local File SHIPMENTD [ZSDH] Endif
+If !clalev([F:ZPRE]) Local File PRECEIPTD [ZPRE] Endif
+If dim(NBLIG)>=0
+  For N = 0  To NBLIG-1
+      If len([M:PTH1]ZSHIPNUM(N))>1 Then
+          Filter [F:ZSDH] Where SHIPNUM=[M:PTH1]ZSHIPNUM(N) and SHIPLIN=[M:PTH1]ZSHIPLIN(N)
+          Read [F:ZSDH] First
+          If !fstat
+              If [F:ZSDH]CLEFLG=1 Then
+
+                  Trbegin [F:ZPRE]
+                     [F:ZPRE]SHIPNUM = [M:PTH1]ZSHIPNUM(N)
+                     [F:ZPRE]SHIPLIN = [M:PTH1]ZSHIPLIN(N)
+                  Rewrite [F:ZPRE]
+                  If !fstat Then
+                     Commit
+                  Else
+                     Rollback
+                  Endif
+                #saldamos expedición
+                  Trbegin [F:ZSDH]
+                     [F:ZSDH]CLEFLG = 2
+                  Rewrite [F:ZSDH]
+                  If !fstat Then
+                     Commit
+                  Else
+                     Rollback
+                  Endif
+              Endif
+          Endif
+      Endif
+  Next N
+Endif
+
+Close File [F:ZPRE],[F:ZSDH]
+Return
+
+$PICKE
+Gosub PICKE           From SUBPTHA
+
+Raz [M:PTH1]ZSHIPNUM(nolign-1),[M:PTH1]ZSHIPLIN(nolign-1)
+GPE=1
+
+
+If len([F:SHD]SHIPNUM)>1 and (currbox="GAU_CHE4" or currbox="GAU_CHE3")
+     [M:PTH1]ZSHIPNUM(nolign-1)     = [F:SHD]SHIPNUM
+     [M:PTH1]ZSHIPLIN(nolign-1)     = [F:SHD]SHIPLIN
+     [M:PTH1]SHIPNUM(nolign-1)      = [F:SHD]SHIPNUM
+     [M:PTH1]SHIPLIN(nolign-1)      = [F:SHD]SHIPLIN
+Endif
+
+Return
+###################################################################################
+##FIN AUREN
+###################################################################################

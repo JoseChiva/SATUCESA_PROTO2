@@ -1,0 +1,20 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Gestión de la máscara PREDLV (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla PREDLV) 13/02/2018 12:48:13 (ADMIN)
+######################################################################################
+Subprog AM_NDEFLG(VALEUR)
+Variable Integer VALEUR
+
+If VALEUR = 2
+  [M:PDL]NDENAM="ZALBVEN"
+  [M:PDL]NDEDEN="IMP002"
+  Affzo [M:PDL]1-99
+Endif
+
+End
+
+
+######################################################################################
+

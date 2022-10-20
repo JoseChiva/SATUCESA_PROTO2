@@ -1,0 +1,3650 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)4.0.0.0 $Revision$
+#########################################################################
+#                                                                       #
+#     LIVRAISONS des BONS de PREPARATION                                #
+#                                                                       #
+#     - Traitement        : FUNPREDLV                                   #
+#     - Action            : TRTPREDLV  (Traitement standard)            #
+#                                                                       #
+#########################################################################
+# Issue 112661 - 20160204 by LD : [PERF] FUNPREDLV is slow
+# Issue 120670 - 20170206 by LD : FUNPREDLV - Contrôle adresse- génération à tort de livraison
+
+#########################################################################
+# Etiquettes ACTION                                                     #
+#########################################################################
+$ACTION
+
+#--- Actions liées au traitement standard
+Case ACTION
+ When "OUVRE_BATCH" : Gosub OUVRE
+ When "INIT"        : Gosub INIT
+ When "DEBUT"       : Gosub DEBUT_TRTPREDLV         : # 75115
+ When "BOUTON"      : Gosub BOUT_TRTPREDLV          : # 75115
+ When "OK"          : Gosub OK_TRTPREDLV            : # 75115
+ When "END"         : GOK=0 :FIN=1
+ When "CONTROLE"    : Gosub CONTROLE
+ When "EXEC"        : Gosub EXEC
+ When "TERMINE"     : Gosub TERMINE
+ When "SORTIE"      : Gosub SORTIE :# SR 09.11 Demande 75817
+ When Default
+Endcase
+Return
+
+#########################################################################
+$INIT
+Local  Integer  I, OK, STAT, LRET
+Local  Integer  WNBPRE, WNBLIV,  NBPOSTE, WSDHACV
+Local  Char     WTRS
+Local  Char     TIT(50)
+Local  Char     CRITERE(250)
+Local  Char     WBPDNAM(GLONNAM)
+Local  Integer  WPOIDS        : Raz WPOIDS
+Local  Integer  WTRBEGIN, WLIN, WCDTUNL, WLIGNE
+Local  Char     LCPT(GLONANM), LNUM
+Local  Char     SYMBOLE(50)
+Local  Char     STRNUM(GLONVCR), ENDNUM(GLONVCR)
+Local  Char     WSVGFCY(GLONFCY)
+Local  Decimal  WDLRNOT, WDLRATI
+Local  Decimal  LQTA, LSHT
+Local  Integer  WSWDKEYD, WSDHLIN
+Local Integer   NBCDE, WNBLIV
+Local Integer   LINFLG, LIVFLG
+Local Integer   COLFLG    #flag si une ligne des BP est colisée
+Local Integer   WCPE_SOQSTA
+Raz NBCDE     # hcb 70951
+#--- Issue 108089 by TS
+Local  Char     SYMBOLEPRH(50), SYMBOLESOH(50)
+
+# SR 09.11 Demande 75817
+Gosub POINT_SEQDLVSPL From TRTX3
+
+# En batch , il vaut mieux mettre onerrgo
+If GSERVEUR
+   Onerrgo ERRBATCH
+Endif
+
+
+# Ouverture des masques et décalration des variables
+Gosub OUVRE
+
+# Ouverture des tables et déclaration des variables pour les états
+Gosub INIT_ETAT From TRTX3ETA
+
+TIT = mess(299,184,1)  : # Livraisons des bons de préparation
+
+GFCYDEF(0) = GFCYDEF(7)
+
+#------------------------------------------------------------#
+# Chargement flag déblocage crédit autorisé                  #
+#------------------------------------------------------------#
+Local Char WPARAM(10)
+Call PARAMUTIL("SCDTUNL",WPARAM,"","") From SUBAUS
+WCDTUNL=val(WPARAM)
+If WCDTUNL=0 WCDTUNL=1 Endif
+
+#If func AFNC.ACTIV("MUL") GPLISTC="néant" Endif
+GPLISTC="néant"
+
+# Contrôle existence de la structure tarif
+Call CTLSTRUCT(1,STAT) From TRTPRICE
+If STAT<>0 : Return : Endif
+# Alimentation des variables nécessaires à la recherche tarif
+Call TARIFCHGT(5) From TRTPRICE
+# Récupération de la structure des frais/remises
+Call COLREM ("C",1,"") From TRTPRICE
+# Récupération des types de frais/remises, des no éléments facturation
+Call TYPREM(1,"") From TRTPRICE
+Global Char     GPNTITMREF     : # Composé
+
+Local Mask PREDLV [PDL]
+
+Raz [M:PDL]
+
+[M:PDL]STOFCY=GFCYDEF(7)
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+# --> Chargement globales référenciels, comptes et sections de la société
+Raz GSOC_ACTIVE : GFCY=GFCYDEF(7) : Gosub CHARG_PARAM
+[M]FLG1=2
+[M]SDHTYPNOR=GSDHTYPNOR
+If func AFNC.ACTIV("LND")<>0
+    [M]FLG2=2
+    If dim(GSDHTYPLND)>0 [M]SDHTYPLND=GSDHTYPLND Endif
+Endif
+If func AFNC.ACTIV("LST")<>0
+    [M]FLG3=2
+    If dim(GSDHTYPSCO)>0 [M]SDHTYPSCO=GSDHTYPSCO Endif
+Endif
+# 75115
+
+[M:PDL]SHIDAT=date$
+[M:PDL]DRNEND=3
+
+Call LECMEMO ("STD","[M:PDL]","prd") From GMEMO
+
+# Positionner le flag si saisie des paramètres depuis la gestion des abonnements
+[M:PDL]ABT=1
+If GFONCTION1="GESABA" [M:PDL]ABT=2 Endif
+
+Return
+#########################################################################
+$OUVRE
+
+If clalev([F:SDH]) = 0 Local File SDELIVERY   [SDH]  : Endif
+If clalev([F:SDD]) = 0 Local File SDELIVERYD  [SDD]  : Endif
+If clalev([F:PRH]) = 0 Local File STOPREH     [PRH]  : Endif
+If clalev([F:PRE]) = 0 Local File STOPRED     [PRE]  : Endif
+If clalev([F:PRL]) = 0 Local File STOPRELIS   [PRL]  : Endif
+If clalev([F:STA]) = 0 Local File STOALL      [STA]  : Endif
+If clalev([F:REO]) = 0 Local File STOREO      [REO]  : Endif
+If clalev([F:SOH]) = 0 Local File SORDER      [SOH]  : Endif
+If clalev([F:SOH1])= 0 Local File SORDER      [SOH1] : Endif #Gbn-82291
+If clalev([F:SOQ]) = 0 Local File SORDERQ     [SOQ]  : Endif
+If clalev([F:SOP]) = 0 Local File SORDERP     [SOP]  : Endif
+If clalev([F:SOC]) = 0 Local File SORDERC     [SOC]  : Endif
+#If clalev([F:SOQ1])= 0 Local File SORDERQ     [SOQ1] : Endif
+#If clalev([F:SOP1])= 0 Local File SORDERP     [SOP1] : Endif
+
+#MAE LIV_AUTOBP
+If clalev([F:SWD]) = 0 Local File SWRKDLV     [SWD] : Endif
+If clalev([F:SWD1])= 0 Local File SWRKDLV     [SWD1]: Endif
+If clalev([F:SWD2])= 0 Local File SWRKDLV     [SWD2]: Endif
+If clalev([F:SWD3])= 0 Local File SWRKDLV     [SWD3]: Endif
+
+
+If clalev([F:ITM]) = 0 Local File ITMMASTER   [ITM]  : Endif
+If clalev([F:ITS]) = 0 Local File ITMSALES    [ITS]  : Endif
+If clalev([F:ITU]) = 0 Local File ITMBPC      [ITU]  : Endif
+If clalev([F:ITF]) = 0 Local File ITMFACILIT  [ITF]  : Endif
+
+If clalev([F:BPR]) = 0 Local File BPARTNER    [BPR]  : Endif
+If clalev([F:BPC]) = 0 Local File BPCUSTOMER  [BPC]  : Endif
+If clalev([F:BPD]) = 0 Local File BPDLVCUST   [BPD]  : Endif
+
+If clalev([F:MVC]) = 0 Local File BPCUSTMVT   [MVC]  : Endif
+If clalev([F:LCM]) = 0 Local File LASTCUSMVT  [LCM]  : Endif
+
+If clalev([F:REP]) = 0 Local File SALESREP    [REP]  : Endif
+If clalev([F:BPT]) = 0 Local File BPCARRIER   [BPT]  : Endif
+
+If clalev([F:TMD]) = 0 Local File TABMODELIV  [TMD]  : Endif
+If clalev([F:FCY]) = 0 Local File FACILITY    [FCY]  : Endif
+If clalev([F:SPK]) = 0 Local File SPRICLINK   [SPK]  : Endif
+If clalev([F:ACV]) = 0 Local File ACTIV       [ACV]  : Endif
+If clalev([F:CPY]) = 0 : Local File COMPANY   [CPY]  : Endif   # 106867.n
+
+If clalev([F:CAL]) = 0 Local File CPTANALIN   [CAL]  : Endif
+If clalev([F:CAL1])= 0 Local File CPTANALIN   [CAL1] : Endif
+
+If clalev([F:GCM]) = 0 Local File GACM        [GCM]  : Endif
+#FQ 69370 GACTSAD conditionne uniquement le stockage de l'adresse sur le document
+#If GACTSAD=2
+If clalev([F:BPA]) = 0 Local File BPADDRESS   [BPA]  : Endif
+#Endif
+#fin FQ 69370
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+If clalev([F:TSD])=0 : Local File TABSDHTYP [TSD] : Endif
+
+If GWRHACT=2
+   If !clalev([F:WRH])  Local File WAREHOUSE  [WRH] : Endif
+   If !clalev([F:ITW])  Local File ITMWRH     [ITW] : Endif
+Endif
+
+# Ouverture des masques de travail pour les stocks
+If clalev([M:ALP]) = 0 Local Mask ALLPAR      [ALP]  : Endif
+If clalev([M:SOW]) = 0 Local Mask STOSORW     [SOW]  : Endif
+# Ouverture classe ecran pour les encours
+If clalev([M:ORDK])= 0 Local Mask ORDK        [ORDK] : Endif
+
+# Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+If clalev([M:SWRK1]) =0 Local Mask SWRKPREDLV [SWRK1]  : Endif
+If clalev([M:SWRK1_])=0 Local Mask SWRKPREDLV [SWRK1_] : Endif
+If clalev([M:SWRK1F])=0 Local Mask SWRKPREDLV [SWRK1F] : Endif
+Local Integer CONST_LENGTH_NEWSEQ : CONST_LENGTH_NEWSEQ=5 #--Already defined in Funprog REWORK_SWD (if length changed here, also change REWORK_SWD)
+Local Integer WRET,WSIGMA,WTEMPSIGMA,IJCPO,IJCPO1,IJCPO2,IJCPO1_,IJCPO2_
+Local Integer WTOADD,WPREVIOUS_NBLIG,WSWDKEY_SEQUENCE,WISTODEL_FROMSWD
+Local Char    WTEMP_WSDKEY(255),WTEMP_WSDKEY1(255)
+# End issue 114391
+
+# Issue 112661
+Local Mask SIH0 [SIH0]
+Local Mask SIH1 [SIH1]
+Local Mask SIH2 [SIH2]
+Local Mask SIH4 [SIH4]
+Local Mask SIHV [SIHX]
+Local Mask SIHV [SIHV]
+# End issue 112661
+
+# v6 affectations
+Gosub OPEN_MTO From MTOLINKLIB
+
+#Raz NBCDE    # hcb 79156
+Return
+
+#########################################################################
+$DEBUT_TRTPREDLV
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+# Si Code activité LND (Gestion des prêts) inactif, désactivation des champs FLG2 et SDHTYPLND
+If func AFNC.ACTIV("LND")=0
+  Chgfmt [M:PDL]FLG2 With "-LA1:4X"
+  Chgfmt [M:PDL]SDHTYPLND With "-K:"+num$(GLONTSD)+"X"
+  If dim([M:PDL]ZSDHTYPLND)>0
+    Chgfmt [M:PDL]ZSDHTYPLND With "-K:"+num$(type([M:PDL]ZSDHTYPLND)-10)+"X"
+    Raz [M:PDL]ZSDHTYPLND
+  Endif
+  Raz [M:PDL]FLG2, [M:PDL]SDHTYPLND
+Else
+  Actzo [M]SDHTYPLND
+Endif
+# Si Code activité LST (Livraisons sous-traitance) inactif, désactivation des champs FLG3 et SDHTYPSCO
+If func AFNC.ACTIV("LST")=0
+  Chgfmt [M:PDL]FLG3 With "-LA1:4X"
+  Chgfmt [M:PDL]SDHTYPSCO With "-K:"+num$(GLONTSD)+"X"
+  If dim([M:PDL]ZSDHTYPSCO)>0
+    Chgfmt [M:PDL]ZSDHTYPSCO With "-K:"+num$(type([M:PDL]ZSDHTYPSCO)-10)+"X"
+    Raz [M:PDL]ZSDHTYPSCO
+  Endif
+  Raz [M:PDL]FLG3, [M:PDL]SDHTYPSCO
+Else
+  Actzo [M]SDHTYPSCO
+Endif
+# 75115
+
+########AELIS########
+[M:PDL]NDEFLG=2
+########AELIS########
+
+Affzo [M:PDL]1-99
+Return
+
+#########################################################################
+$OK_TRTPREDLV
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+If [M]FLG1<>2 & [M]FLG2<>2 & [M]FLG3<>2
+    GERR=1 : GMESSAGE=mess(365,192,1) : FIN=0 : Return
+Endif
+# 75115
+GOK=1
+Return
+#########################################################################
+$BOUT_TRTPREDLV
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+Case BOUT
+    When "R"  : # Rappel Memo
+                # --> Chargement globales référenciels, comptes et sections de la société
+                #If GFCY<>[M:DIA]STOFCY : GFCY=[M:DIA]STOFCY : Gosub CHARG_PARAM Endif
+                If GFCY<>[M:PDL]STOFCY : GFCY=[M:PDL]STOFCY : Gosub CHARG_PARAM Endif :#--CPO Lors du 86452
+    When Default
+Endcase
+# 75115
+Return
+
+#########################################################################
+$CONTROLE
+
+If GOK<1
+    # Sup. fichier travail si interruption traitement antérieur dans la même session
+    Gosub DEL_SWD
+    FIN=1
+Endif
+
+Return
+
+#########################################################################
+$EXEC
+
+
+# Chargement globales référenciels, comptes et sections de la société
+Raz GSOC_ACTIVE : GFCY=[M:PDL]STOFCY : Gosub CHARG_PARAM
+If GERR=1 Return Endif
+
+#--------------------------------------------------------------------------------#
+# Récupération de paramètres vente nécessaires au recalcul de l'état crédit
+# lors de la sélection des commandes
+# Ces paramètres sont au niveau soc donc pas besoin de SALFCY
+# On évite GLOBVAR qui est trop long, les autres paramètres seront lus lors du trt de la cde
+#--------------------------------------------------------------------------------#
+Local Char    PARAMETRE(10)
+Global Libelle GOSTCTL   : # Niveau de contrôle d'en-cours
+Call PARAML([M:PDL]STOFCY,"OSTCTL",PARAMETRE) From ADOVAL
+GOSTCTL   = val(PARAMETRE)
+Global Libelle GOSTDRAFT : # Mnt portefeuille dans en-cours
+Call PARAML([M:PDL]STOFCY,"OSTDRAFT",PARAMETRE) From ADOVAL
+GOSTDRAFT = val(PARAMETRE)
+Global Libelle GOSTORD   : # Carnet cde dans total en-cours
+Call PARAML([M:PDL]STOFCY,"OSTORD",PARAMETRE) From ADOVAL
+GOSTORD   = val(PARAMETRE)
+Global Libelle GOSTLND   : # Prêt dans total en-cours
+Call PARAML([M:PDL]STOFCY,"OSTLND",PARAMETRE) From ADOVAL
+GOSTLND   = val(PARAMETRE)
+
+Global Char    GTRSLIV(30) : # Transaction livraison vente
+Call PARAML([M:PDL]STOFCY,"TRSLIV",GTRSLIV) From ADOVAL
+Global Char    GTRSLND(30) : # Transaction prêt vente
+Call PARAML([M:PDL]STOFCY,"TRSLND",GTRSLND) From ADOVAL
+
+# Ouverture + reservations pour repartition elts facturation a la ligne   : # 85826
+Gosub OUV_DSPLIN From TRTVENFACC                                          : # 85826
+
+Default Mask [PDL]
+
+If !GSERVEUR
+# Ouverture de la trace
+    Call OUVRE_TRACE(TIT) From LECFIC
+    Call ECR_TRACE(" ",0) From GESECRAN
+    Call ECR_TRACE(string$(70,"-"),0) From GESECRAN
+    Call PRTSCR("PREDLV","PDL","",0,1) From ATRTX3
+    Call ECR_TRACE(string$(70,"-"),0) From GESECRAN
+    Call ECR_TRACE(" ",0) From GESECRAN
+Endif
+
+# Bornage de la date de prise en compte des BP si la requête est abonnée
+# Si date expédition non renseignée, on force la date du jour
+If [M:PDL]SHIDAT=[0/0/0] & [M:PDL]ABT=2 [M:PDL]SHIDAT=date$ : Endif
+
+# Récupération de la transaction de livraison
+Gosub RECH_TRSVEN
+# Il n'y en a pas
+If OK=1 Goto EXEC_FIN Endif
+
+#If GOK=0 : Goto EXEC_FIN : Endif
+
+# Génération des livraisons à partir des bons de préparation
+Gosub TRT_PREPA
+
+# --> fin de traitement
+$EXEC_FIN
+# --> suppression enreg. fichier travail
+Gosub DEL_SWD
+Return
+
+#########################################################################
+$TERMINE
+
+If !GSERVEUR
+   # Fermeture trace
+   If !WNBPRE
+      Call ECR_TRACE(mess(300,184,1),0) From GESECRAN
+   Endif
+   Call FERME_TRACE From LECFIC
+
+   # Aucun bon de préparation à traiter ou lecture trace
+   If !WNBPRE
+      GERR=2 : GMESSAGE=mess(300,184,1)
+   Endif
+   TRA=1
+Endif
+
+If WNBLIV
+   # Bon de livraison
+   If [M:PDL]NDEFLG=2 & [M:PDL]NDENAM<>"" & [M:PDL]NDEDEN<>""
+      Call PRINT_ETAT (2,WARP_NUMREQ,[M:PDL]NDEDEN) From TRTX3ETA
+   Endif
+Endif
+
+# Si présence module Support Client et validation des livraisons, impression
+If GMODU(12)=2 & [M:PDL]CFMDLV = 2
+   Call PRINTFLYER(2,STRNUM,ENDNUM,LRET) From TRTMACRULE
+   If LRET GERR=2 : GMESSAGE=mess(LRET,182,1) Endif
+Endif
+
+Return
+
+# SR 09.11 Demande 75817
+#########################################################################
+$SORTIE
+If dim(GSTEP3)>0          Kill GSTEP3  : Endif
+
+# Issue 112661
+Close Mask [SIH0]
+Close Mask [SIH1]
+Close Mask [SIH2]
+Close Mask [SIH4]
+Close Mask [SIHX]
+Close Mask [SIHV]
+# End issue 112661
+
+Return
+
+#########################################################################
+# Récupération de la transaction de livraison
+#########################################################################
+$RECH_TRSVEN
+
+OK=2
+If !clalev ([F:SLT]) : Local File SALTRS  [SLT] : Endif
+
+# Il y a des livraisons normales à traiter
+If [M:PDL]FLG1=2 | [M:PDL]FLG3=2
+   WTRS=GTRSLIV
+   If WTRS <> ""
+      Read [SLT]SLT0=4;WTRS
+      If fstat | [F:SLT]ENAFLG<>2 | !find([F:SLT]DLVTYP,1,4) WTRS="" Endif
+   Endif
+   # Aucune transaction paramétrée ou elle n'existe plus
+   If WTRS = ""
+      Filter [SLT] Where STRTYP=4 & ENAFLG=2 & find(DLVTYP,1,4)
+      Read [SLT]SLT0 First
+      If fstat
+         Call ECR_TRACE(mess(287,192,1),1) From GESECRAN : OK=1 : Return
+      Endif
+      Filter [SLT]
+   Endif
+   [M:PDL]TRSFAMLIV = [F:SLT]TRSFAM
+   [M:PDL]TRSCODLIV = [F:SLT]TRSCOD
+   [M:PDL]ENTCODLIV = [F:SLT]ENTCOD
+Endif
+# Il y a des livraisons de prêt à traiter
+If [M:PDL]FLG2=2
+   WTRS=GTRSLND
+   If WTRS <> ""
+      Read [SLT]SLT0=4; WTRS
+      If fstat | [F:SLT]ENAFLG<>2 | !find([F:SLT]DLVTYP,2,4) WTRS="" Endif
+   Endif
+   # Aucune transaction paramétrée ou elle n'existe plus
+   If WTRS = ""
+      Filter [SLT] Where STRTYP=4 & ENAFLG =2 & find(DLVTYP,2,4)
+      Read [SLT]SLT0 First
+      If fstat
+         Call ECR_TRACE(mess(288,192,1),1) From GESECRAN : OK=1 : Return
+      Endif
+      Filter [SLT]
+   Endif
+   [M:PDL]TRSFAMLND = [F:SLT]TRSFAM
+   [M:PDL]TRSCODLND = [F:SLT]TRSCOD
+   [M:PDL]ENTCODLND = [F:SLT]ENTCOD
+Endif
+Return
+
+#########################################################################
+# Traitement des bons de préparation
+#########################################################################
+$TRT_PREPA
+
+# Critères de saisie
+CRITERE = "STOFCY=[M]STOFCY & DLVFLG=2"
+If [M]PRHNUMSTR<>""
+   CRITERE += "&PRHNUM>=[M]PRHNUMSTR"
+Endif
+If [M]PRHNUMEND<>""
+   CRITERE += "&PRHNUM<=[M]PRHNUMEND"
+Endif
+If [M]BPCORDSTR<>""
+   CRITERE += "&BPCORD>=[M]BPCORDSTR"
+   WCRITBPC=1
+Endif
+If [M]BPCORDEND<>""
+   CRITERE += "&BPCORD<=[M]BPCORDEND"
+   WCRITBPC=1
+Endif
+# Issue 120670
+If [M]BPAADDSTR<>""
+   CRITERE += "&BPAADD>=[M]BPAADDSTR"
+Endif
+If [M]BPAADDEND<>""
+   CRITERE += "&BPAADD<=[M]BPAADDEND"
+Endif
+# End issue 120670
+If [M]SHIDAT <> [0/0/0]
+   CRITERE += "&SHIDAT<=[M]SHIDAT"
+Endif
+#--CPO 90739 [M]BPTNUM var inexstante
+If [M]BPTNUMSTR <> ""
+   #CRITERE += "&BPTNUM>=[M]BPTNUM"
+   CRITERE += "&BPTNUM>=[M]BPTNUMSTR"
+Endif
+If [M]BPTNUMEND <> ""
+   #CRITERE += "&BPTNUM<=[M]BPTNUM"
+   CRITERE += "&BPTNUM<=[M]BPTNUMEND"
+Endif
+#--/
+If [M]DRNSTR<>0
+   CRITERE += "&DRN>=[M]DRNSTR"
+Endif
+If [M]DRNEND<>0
+   CRITERE += "&DRN<=[M]DRNEND"
+Endif
+
+
+# Critères supplémentaires
+If [M:PDL]FLG1=2 WPOIDS+=1 Endif
+If [M:PDL]FLG2=2 WPOIDS+=2 Endif
+If [M:PDL]FLG3=2 WPOIDS+=4 Endif
+Case WPOIDS
+   When 1       : CRITERE += "&ORIPRH=1"
+   When 2       : CRITERE += "&ORIPRH=2"
+   When 3       : CRITERE += "&find(ORIPRH,1,2)>0"
+   When 4       : CRITERE += "&ORIPRH=3"
+   When 5       : CRITERE += "&find(ORIPRH,1,3)>0"
+   When 6       : CRITERE += "&find(ORIPRH,2,3)>0"
+   When Default :
+Endcase
+
+#---------------------------------------------------------------------#
+# Point d'entree ajout filtres supplémentaires                        #
+#---------------------------------------------------------------------#
+Local Char    FILSUPENT(250)
+FILSUPENT="1=1"
+
+#--- Dem 83086
+GPOINT="PREDLVFIL" : Gosub ENTREE From EXEFNC
+
+# Récupération des paramètres stock(livraison) du site / de la société
+Call GLOBSTOFCY([F:PRH]STOFCY) From TRTVENGLOB
+
+Raz [M:SWRK1],[M:SWRK1_],[M:SWRK1F] # Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+
+#--- Issue 118769 for Implus
+Local Integer WNBREC1,WNBREC2
+Local Char    WORINUM(GLONVCR)
+#--- End issue 118769 for Implus
+
+For [PRH]PRH1 Where (evalue(CRITERE) & evalue (FILSUPENT))
+
+   # Traitement d'un bon de préparation
+   Gosub CHARGEFIC
+   If GOK=0 Goto NEXT_PRH Endif
+   WNBPRE += 1
+
+$NEXT_PRH
+Next
+
+WRET = func REWORK_SWD() # Issue 114391  - 2016-02-19 by CPO : Picking tikets and complet order
+
+#--- Issue 118769 for Implus
+Local Char WCHG
+GPE=0
+GPOINT="CHG_TRT_FIC" : Gosub ENTREE From EXEFNC
+If GPE=1
+  WCHG="TRT_FIC2"
+  Gosub TRT_FIC2
+  Raz WCHG
+  Raz GPE
+  Return
+Endif
+Raz WCHG
+#--- End issue 118769 for Implus
+
+#lecture du fichier
+Gosub TRT_FIC
+
+Return
+#########################################################################
+# Livraison d'un bon de préparation
+#########################################################################
+$LIV_PREPA
+  #--- Issue 104781
+  #Call DEBTRANS From GLOCK
+  #Trbegin [PRH]
+  #---
+$LECT_PRH
+  Readlock [PRH]Curr
+  If  fstat=1
+    #    GOK=-1 : GLOCK="$STOPREH"+[F:PRH]PRHNUM: Goto ROL_TRT    #MAE LIV_AUTOBP
+    GOK=-1 : GLOCK="$STOPREH"+[F:SWD]SOHNUM: Goto ROL_TRT
+  Elsif fstat
+    #    GOK=0 : Call RSTA("PRH",[F:PRH]PRHNUM) From GLOCK : Goto AB_STD    #MAE LIV_AUTOBP
+    GOK=0 : Call RSTA("PRH",[F:SWD]SOHNUM) From GLOCK : Goto AB_STD
+  Endif
+
+#                                                # hcb 103813 deb
+  If [F:PRH]WEU <> "" & [F:SDH]WEU = ""
+     [F:SDH]WEU = [F:PRH]WEU
+  Endif
+#                                                # hcb 103813 fin
+
+  #Raz WNBLIG
+  # Traitement des lignes de préparations
+  #For [PRE]PRE0 Where PRHNUM=[F:PRH]PRHNUM    #MAE LIV_AUTOBP
+  For [PRE]PRE0 Where PRHNUM=[F:PRH]PRHNUM & FLGANN=0
+    Case [F:PRE]ORITYP
+      When 1,2 : Gosub ALI_SOQSDD
+      When 3   : Gosub ALI_REOSDD
+      When 4   : Gosub ALI_STASDD
+    Endcase
+    If GOK=0 Break Endif
+    # Mise à jour de la ligne bon de préparation
+    Gosub MAJ_PRE
+    If GOK=0 Break Endif
+    #   WNBLIG += 1
+    #nbre de lignes de la livraison
+    WSDHLIN += 1
+  Next
+  If GOK<0
+    Goto AB_STD
+    Return
+  Endif
+  # --------------------------------------------
+  # Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+  #--Done while selecting picking tickets into the SWD working table
+  ## FGR 21/08/2014 : X3SUIVI101716 (début)
+  #If [F:PRE]ORITYP = 1 or [F:PRE]ORITYP = 2 Then
+  #  # Issue 109797 - 2015-08-06 by CPO : Commande non soldée si BL généré par la fonction FUNPREDLV
+  #  #--Cas d'une livraison créée à partir d'un BP qui lui contient plusieurs lignes de commandes différentes
+  #  #--Avant l'appel à VERIF_CDE_LIV, il faut sauvegarder le [SOH] courant. Le ALI_SOQSDD met à jour
+  #  #--des cumuls dans le [SOH] et ce dernier n'est pas encore écrit dans la base
+  #  #--le VERIF_CDE_LIV va faire une lecture sur [SOH]=[M:SDH1]XSOHNUM(ligne) et va écraser les cumuls !
+  #  Raz [F:SOHx] #--pour pas être polué par d'anciennes valeurs si on passe plusieures fois dans la boucle
+  #  [F:SOHX]=[F:SOH]
+  #  # End issue 109797
+  #  Gosub VERIF_CDE_LIV
+  #  [F:SOH]=[F:SOHX] # Issue 109797
+  #  # FGR 19/11/2014 : X3SUIVI103968 (début)
+  #  If GOK = 0 Then
+  #    Return
+  #  Endif
+  #  # FGR 19/11/2014 : X3SUIVI103968 (fin)
+  #Endif
+  ## FGR 21/08/2014 : X3SUIVI101716 (fin)
+  # End issue 114391
+  # --------------------------------------------
+  #If find([F:PRH]ORIPRH,1,2) & WNBLIG>0
+  # Maj dernière commande
+  #   Gosub SOH_FIN
+  #Endif
+  # Ecriture de l'entête livraison
+  #
+  #Gosub ECR_SDH
+  #If GOK=0 Return Endif
+  # Mise à jour de l'entête bon de préparation
+  If GOK = 1
+    Gosub MAJ_PRH
+  Endif
+  If GOK<0
+    Goto AB_STD
+  Endif
+  # Validation de la livraison
+  #If [M:PDL]CFMDLV=2
+  #   Gosub VALID_SDH
+  #Endif
+
+  #--- Issue 104781
+  #Commit
+Return
+
+#########################################################################
+$VERIF_CDE_LIV
+  OK=1 # Issue 111425 - 2015-11-16 by CPO : Livraison commandes complètes
+  # FGR 26/11/2014 : X3SUIVI103968
+  Gosub VERIF_CDE_LIV From SUBSDHA
+  If OK = 0 Then
+    GOK = 0
+    Goto AB_STD
+  Endif
+Return
+
+#########################################################################
+# Livraison d'une ligne de commande
+#########################################################################
+$ALI_SOQSDD
+
+#MAE, LIV_AUTOBP, l'entête SDH est alimentée une seule fois
+#If WNBLIG=0
+   # Alimentation entête livraison depuis première commande
+   #Gosub ALI_SOHSDH
+   #If GOK=0 Return Endif
+#Endif
+
+# Rupture commande
+If [F:SOH]SOHNUM<>[F:PRE]ORINUM
+
+   # --> maj commande précédente
+   Gosub SOH_FIN
+   If GOK=0 Return Endif
+
+   # --> lecture nouvelle commande
+   Gosub SOH_DEB
+   If GOK=0 Return Endif
+Endif
+
+#-- Lecture détail cde qte
+Readlock [SOQ]SOQ0=[F:PRE]ORINUM;[F:PRE]ORILIN;[F:PRE]ORISEQ
+If fstat
+   GOK=0 : Call RSTA("SOQ",[F:PRE]ORINUM-num$([F:PRE]ORILIN)-num$([F:PRE]ORISEQ)) From GLOCK
+   Goto AB_STD
+Endif
+
+#-- Lecture détail cde prix
+If [F:SOH]SOHCAT=4
+   # ---------------------------------------
+   # FGR 27/07/2015 : X3SUIVI109274 (début)
+   If [F:SOC]SOHNUM <> [F:PRE]ORINUM or [F:SOC]SOPLIN <> [F:PRE]ORILIN Then
+     Read [SOC]SOC0=[F:PRE]ORINUM;[F:PRE]ORILIN
+     If fstat Then
+       Raz [F:SOC]
+     Endif
+     If [F:BPD]BPCNUM <> [F:SOC]BPCORD or [F:BPD]BPAADD <> [F:SOC]BPAADD Then
+       Read [BPD]BPD0=[F:SOC]BPCORD;[F:SOC]BPAADD
+       If fstat
+         Raz [F:BPD]
+       Endif
+     Endif
+   Endif
+   # FGR 27/07/2015 : X3SUIVI109274 (fin)
+   # ---------------------------------------
+   Raz [F:SOP]
+   If [F:SOC]PLI = ""
+      Filter [SOP] Where SOHNUM =[F:PRE]ORINUM & SOPLIN =[F:PRE]ORILIN &
+&                        STRDAT<=[F:SOQ]SHIDAT & ENDDAT>=[F:SOQ]SHIDAT
+      Read [SOP]SOP0 First
+      If fstat : Raz [F:SOP] : Endif
+      Filter [SOP]
+   Endif
+Else
+   Read [SOP]SOP0=[F:PRE]ORINUM;[F:PRE]ORILIN;[F:PRE]ORISEQ
+   If fstat
+      GOK=0 : Call RSTA("SOP",[F:PRE]ORINUM-num$([F:PRE]ORILIN)-num$([F:PRE]ORISEQ)) From GLOCK
+      Goto AB_STD
+   Endif
+Endif
+
+#-- Lecture tables article
+Call LECTABART([F:SOQ]ITMREF,[F:SOH]BPCORD)
+If GOK=0 Goto AB_STD Endif
+
+#-----------------------------------------------#
+# Création détail livraison                     #
+#-----------------------------------------------#
+Call ALICDESDD("2") From TRTVENLIV
+If GOK<1 Goto ALI_SOQSDD_FIN Endif
+
+#-- Récupération du compteur livraison
+If WSDHLIN=0
+   Gosub REC_CPT_LIV From TRTVENLIV
+   If GOK<1 Goto ALI_SOQSDD_FIN Endif
+Endif
+
+WLIN = WLIN+1000
+[F:SDD]SDHNUM = [F:SDH]SDHNUM
+[F:SDD]SDDLIN = WLIN
+[F:SDD]PRHNUM = [F:PRE]PRHNUM
+[F:SDD]PRELIN = [F:PRE]PRELIN
+
+If dim([F:SDD]CPY)>0 : [F:SDD]CPY=GSOCIETE : Endif
+
+Write [SDD]
+If fstat
+   GOK=0 : Call FSTA("SDD") From GLOCK : Goto ALI_SOQSDD_FIN
+Endif
+
+#-----------------------------------------------#
+# Maj détail commande, en-cours et allocations  #
+#-----------------------------------------------#
+Call MAJDETCDE("2",WDLRNOT,WDLRATI,WCPE_SOQSTA) From TRTVENLIV
+If GOK<1 Goto ALI_SOQSDD_FIN Endif
+
+#-----------------------------------------------#
+# Maj des sections analytiques                  #
+#-----------------------------------------------#
+Gosub MAJSDD_CPTANALIN From TRTVENLIV
+If GOK<1 Goto ALI_SOQSDD_FIN Endif
+
+
+#Gbn-Fq79348
+# Dans la valorisation TTC, on passe par les classes écrans, il faut les charger
+nolign = WSDHLIN+1
+[M:SDH1] = [F:SDD]
+[M:SDH1]VACITM1(nolign-1) = [F:SDD]VACITM(0)
+[M:SDH1]VACITM2(nolign-1) = [F:SDD]VACITM(1)
+[M:SDH1]VACITM3(nolign-1) = [F:SDD]VACITM(2)
+[M:SDH1]VAT1(nolign-1)    = [F:SDD]VAT(0)
+[M:SDH1]VAT2(nolign-1)    = [F:SDD]VAT(1)
+[M:SDH1]VAT3(nolign-1)    = [F:SDD]VAT(2)
+[M:SDH1]XSOHNUM(nolign-1) = [F:SOH]SOHNUM      # FGR 21/08/2014 : X3SUIVI101716
+[M:SDH1]NBLIG += 1
+
+#-----------------------------------------------#
+# Cumul et alimentation zones entête livraison  #
+#-----------------------------------------------#
+Call ALICUMSDH([F:SDD]VCRTYPORI) From TRTVENLIV     : # Bug 82078 : Ajout origine de la livraison
+
+# Trace détail commande pris en compte dans la livraison
+#    article xxx xxxx quantité livrée xxx reste à livrer xxx
+Local Decimal WWQTY
+WWQTY = [F:SOQ]QTY - ([F:SOQ]ODLQTY+[F:SOQ]DLVQTY)
+Call ECR_TRACE("          "+mess(18,007,1)-[F:SDD]ITMREF-[F:SDD]ITMDES1+
+&    "     "+mess(40,191,1)-num$([F:SDD]QTY)-mess(41,191,1)-num$(WWQTY),0)
+&    From GESECRAN
+
+#-- Point d'entrée après création ligne détail livraison
+GPOINT="AUTDLVDET" : Gosub ENTREE From EXEFNC
+If GOK<1 Goto ALI_SOQSDD_FIN Endif
+
+# Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+#--Le transclasse va initialiser les champs DSPTOTQTY/DSPTOTWEI/DSPTOTVOL avec les valeurs inscrite dans le SQH
+#--On doit les Raz car ces champs seront mis à jour dans les ss-pros appelés lors de création de SDD (également corrigés)
+#--suite
+[F:SDH]DSPTOTQTY += [F:SDD]QTYSTU
+[F:SDH]DSPTOTWEI += [F:SDD]DSPLINWEI
+[F:SDH]DSPTOTVOL += [F:SDD]DSPLINVOL
+# End issue 109784
+
+#-- ACA (2009-12-08) Bug 60804 : Transfert des éléments de facturation via prépa (auto)
+#-- Transfert des elements de facturation
+Local Char SVGGREP(type(GREP)-10)
+
+SVGGREP=GREP
+GREP="C"
+Gosub SOH_SDH_PLUS From SUBSFIT
+#If GERR <> 0 Then          # FGR 19/08/2014 : X3SUIVI100811
+If GERR = 1 Then            # FGR 22/06/2015 : X3SUIVI109023
+  GOK = -1
+  Goto ALI_SOQSDD_FIN
+Endif
+#--CPO 106895 Lors du traitement de cette fiche
+#--Manque : idem correction 96235 faite dans FUNAUTDLV : il faut prendre le numéro de cde de la ligne
+#Call MAJ_SFIT_QTY("F", "SDH", [F:SDH]SOHNUM, [F:SDD]QTYSTU, [F:SDD]NETPRINOT * [F:SDD]QTY, [F:SDD]DSPLINWEI, [F:SDD]DSPLINVOL) From SUBSFIT
+Call MAJ_SFIT_QTY("F", "SDH", [F:SDD]SOHNUM, [F:SDD]QTYSTU, [F:SDD]NETPRINOT * [F:SDD]QTY, [F:SDD]DSPLINWEI, [F:SDD]DSPLINVOL) From SUBSFIT
+#--/
+GREP=SVGGREP
+
+#########################################################################
+$ALI_SOQSDD_FIN
+Call RAZSTOSORW From STKSOR
+#--- Issue 111375 by TS
+#If GOK<0  Goto AB_STD Endif    #MAE LIV_AUTOBP
+If GOK<1  Goto AB_STD Endif    #MAE LIV_AUTOBP
+#---
+Return
+
+#########################################################################
+# Alimentation entête livraison depuis première commande
+#########################################################################
+$ALI_SOHSDH
+
+Raz WLIN
+Raz WDLRNOT, WDLRATI
+
+Gosub READ_PRH
+
+#--- Issue 108089 by TS
+SYMBOLESOH = "SOH"+[F:PRE]ORINUM
+Lock = SYMBOLESOH With lockwait=0
+If fstat=1
+  # Modification en cours sur un autre poste
+  Call ECR_TRACE("          "+[F:PRE]ORINUM-mess(10,100,1),1) From GESECRAN
+  GOK=0
+  Goto AB_STD
+Endif
+#---
+
+# Lecture entête commande
+Readlock [SOH]SOH0 = [F:PRE]ORINUM
+If fstat
+   GOK=0 : Call RSTA("SOH",[F:PRE]ORINUM) From GLOCK : Goto AB_STD
+Endif
+# Si commande ouverte
+If [F:SOH]SOHCAT = 4
+   Read [SOC]SOC0=[F:PRE]ORINUM;[F:PRE]ORILIN
+   If fstat
+      GOK=0 : Call RSTA("SOC",[F:PRE]ORINUM-num$([F:PRE]ORILIN)) From GLOCK  : Goto AB_STD
+   Endif
+Endif
+
+# Lecture détail cde qte
+Read [SOQ]SOQ0 = [F:PRE]ORINUM; [F:PRE]ORILIN; [F:PRE]ORISEQ
+If fstat
+   GOK=0 : Call RSTA("SOQ",[F:PRE]ORINUM-num$([F:PRE]PRELIN)-num$([F:PRE]ORISEQ)) From GLOCK : Goto AB_STD
+Endif
+
+# Lecture client livré
+# Si commande ouverte
+If [F:SOH]SOHCAT = 4
+    Read [BPD]BPD0 = [F:SOC]BPCORD; [F:SOC]BPAADD
+    If  fstat
+        GOK=0 : Call RSTA("BPD",[F:SOC]BPCORD-[F:SOC]BPAADD) From GLOCK : Goto AB_STD
+    Endif
+Else
+    Read [BPD]BPD0 = [F:SOH]BPCORD; [F:SOH]BPAADD
+    If  fstat
+        GOK=0 : Call RSTA("BPD",[F:SOH]BPCORD-[F:SOH]BPAADD) From GLOCK : Goto AB_STD
+    Endif
+Endif
+
+# Lecture client facture
+Read [BPC]BPC0 = [F:SOH]BPCINV
+If  fstat
+    GOK=0 : Call RSTA("BPC",[F:SOH]BPCINV) From GLOCK : Goto AB_STD
+Endif
+
+# Lecture tiers
+Read [BPR]BPR0 = [F:SOH]BPCINV
+If  fstat
+    GOK=0 : Call RSTA("BPR",[F:SOH]BPCINV) From GLOCK : Goto AB_STD
+Endif
+
+# Lecture transporteur
+Read [BPT]BPT0 = [F:PRH]BPTNUM
+If  fstat : Raz [F:BPT] : Endif
+
+# Lecture mode de livraison
+Read [TMD]TMD0 = [F:SOH]MDL
+If  fstat : Raz [F:TMD] : Endif
+
+# Lecture article maitre
+Read [ITM]ITM0 = [F:SOQ]ITMREF
+If  fstat
+    GOK=0 : Call RSTA("ITM",[F:SOQ]ITMREF) From GLOCK : Goto AB_STD
+Endif
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+# Lecture type de livraison
+Local Integer WERR
+Local Char    WSDHTYP(GLONTSD)
+If [F:SOH]SDHTYP<>""
+  WSDHTYP=[F:SOH]SDHTYP
+Elsif [F:SOH]SOHCAT=2
+  WSDHTYP=[M:PDL]SDHTYPLND
+Else
+  WSDHTYP=[M:PDL]SDHTYPNOR
+Endif
+Call LEC_TSD_LEG(GCURLEG,WSDHTYP,WERR) From TRTLECLEG
+If WERR GOK=0 : Call RSTA("TSD", WSDHTYP) From GLOCK : Goto AB_STD Endif
+# 75115
+
+If [F:SOH]SALFCY<>WSVGFCY
+   # Alimentation paramètres de vente
+   Call GLOBVAR([F:SOH]SALFCY) From WWGLOBVEN
+   WSVGFCY = [F:SOH]SALFCY
+Endif
+
+# Alimentation entête livraison
+Call ALICDESDH From TRTVENLIV
+
+# Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+#--Le transclasse va initialiser les champs DSPTOTQTY/DSPTOTWEI/DSPTOTVOL avec les valeurs inscrite dans le SQH
+#--On doit les Raz car ces champs seront mis à jour dans les ss-pros appelés lors de création de SDD (également corrigés)
+Raz [F:SDH]DSPTOTQTY ,[F:SDH]DSPTOTVOL, [F:SDH]DSPTOTWEI
+# End issue 109784
+
+# Récupération données stock de la transaction
+If [F:SDH]LND = 2
+   [F:SDH]TRSFAM = [M:PDL]TRSFAMLND
+   [F:SDH]TRSCOD = [M:PDL]TRSCODLND
+   [F:SDH]ENTCOD = [M:PDL]ENTCODLND
+Else
+   [F:SDH]TRSFAM = [M:PDL]TRSFAMLIV
+   [F:SDH]TRSCOD = [M:PDL]TRSCODLIV
+   [F:SDH]ENTCOD = [M:PDL]ENTCODLIV
+Endif
+
+If [F:SDH]BPDNAM(0) <> ""
+    WBPDNAM=[F:SDH]BPDNAM(0)
+Else
+    If [F:BPD]BPCNUM<>[F:SDH]BPCORD | [F:BPD]BPAADD<>[F:SDH]BPAADD
+        Read [BPD]BPD0 = [F:SDH]BPCORD; [F:SDH]BPAADD
+        If fstat Raz [F:BPD] : Endif
+    Endif
+    WBPDNAM=[F:BPD]BPDNAM
+Endif
+
+Return
+
+#########################################################################
+# Traitement d'entête commande                                          #
+#########################################################################
+$SOH_DEB
+
+Raz WDLRNOT, WDLRATI
+
+#--- Issue 108089 by TS
+SYMBOLESOH = "SOH"+[F:PRE]ORINUM
+Lock = SYMBOLESOH With lockwait=0
+If fstat=1
+  # Modification en cours sur un autre poste
+  Call ECR_TRACE("          "+[F:PRE]ORINUM-mess(10,100,1),1) From GESECRAN
+  GOK=0
+  Goto AB_STD
+Endif
+#---
+
+# Lecture entête commande
+Readlock [SOH]SOH0 = [F:PRE]ORINUM
+If fstat
+   GOK=0 : Call RSTA("SOH",[F:PRE]ORINUM) From GLOCK : Goto AB_STD
+Endif
+
+# Alimentation elements pied facture
+#--CPO 106895 Lors du traitement de cette fiche
+#--Le ALIMFOOT2 se base sur les anciens champs de transferts V5, non utilisés à partir de la V6
+#--Ce qui était fait dans ALIMFOOT2 est fait maintenant ds TRT_DETAIL par appel SOH_SDH_PLUS
+#--Ne sert plus à rien pour TRAIT=4 ou 7
+#NBPOSTE = dim([F:SDH]INVDTA)
+#Call ALIMFOOT2 (4,NBPOSTE,[F:SDH]CHGTYP,[F:SOH]CUR,[F:SDH]CUR,"NON") From SUBSFIT
+#--/
+
+Return
+
+#########################################################################
+# Traitement de fin de commande                                         #
+#########################################################################
+$SOH_FIN
+
+# Maj entête commande
+Call MAJENTCDE (WDLRNOT,WDLRATI) From TRTVENLIV
+If GOK <= 0 Goto AB_STD  Endif
+
+# Maj si cde signée ou Si Paramètre maj encours client cde non signée à "Oui" et cde non ouverte et non intra-société
+If [F:SOH]SOHCAT<>4 & ([F:SOH]APPFLG>2 | GSOHAPPOST=2) & !([F:SOH]BETFCY=2 & [F:SOH]BETCPY<=1)
+   # Maj mouvement client (en commande)
+   Call  MAJMVC ([F:SOH]BPCORD, [F:SOH]CUR, [F:SOH]CHGTYP, 0, [F:SOH]ORDDAT, [F:SOH]SOHNUM, [F:SOH]SALFCY,
+&                WDLRNOT, WDLRATI, "-", "F", "", [F:SOH]SOHCAT) From TRTBPMVT
+   If GOK <= 0 Goto AB_STD  Endif
+Endif
+
+# Trace entête commande : commande xxxx
+Call ECR_TRACE("     "+mess(10,159,1)-[F:SOH]SOHNUM,0) From GESECRAN
+
+#--- Issue 108089 by TS
+Unlock = SYMBOLESOH
+#---
+Return
+
+#########################################################################
+# Livraison d'un besoin de réappro sous-traitant
+#########################################################################
+$ALI_REOSDD
+
+#MAE, LIV_AUTOBP, l'entête SDH est alimentée une seule fois
+#If WNBLIG=0
+   # Alimentation entête livraison depuis besoin de réappro sous-traitant
+#   Gosub ALI_SSTSDH
+#   If GOK=0 Return Endif
+#Endif
+
+Read [REO]REO0=[F:PRH]STOFCY;[F:PRE]REOLOC;[F:PRE]ITMREF
+If fstat
+   Call RSTA ("REO",[F:PRH]STOFCY-[F:PRE]REOLOC-[F:PRE]ITMREF) From GLOCK
+   Raz GOK : Return
+Endif
+
+# Lecture tables article
+Call LECTABART([F:PRE]ITMREF,[F:PRH]BPCORD)
+If GOK=0 Goto AB_STD Endif
+
+Raz [F:SDD]             : # Bug 82078
+[F:SDD] = [F:ITM]
+If [F:ITS]ITMREF<>"" [F:SDD] = [F:ITS] Endif
+If [F:ITU]ITMREF<>"" [F:SDD] = [F:ITU] Endif
+
+[F:SDD] = [F:PRE]
+
+# Détermination de l'UV et du coef UV/US
+[F:SDD]SAU       = [F:REO]PCU
+[F:SDD]SAUSTUCOE = [F:REO]PCUSTUCOE
+WDAC       = 1
+
+If [F:REO]PCU<>[F:REO]STU
+   # Recherche si PCU peut être une unité de vente et récup du coef
+   Call CTLUOM([F:REO]ITMREF,2,[F:REO]BPRNUM,[F:SDD]SAU,[F:SDD]SAUSTUCOE,
+&              GBIDC1,GBIDC2,WDAC) From STKACT
+   # PCU n'est pas autorisé comme UV
+   If mkstat=2
+      [F:SDD]SAU       = [F:REO]STU
+      [F:SDD]SAUSTUCOE = 1
+   # PCU est autorisé comme UV,
+   # mais le coef est différent et sa modif n'est pas autorisé
+   Elsif [F:SDD]SAUSTUCOE<>[F:REO]PCUSTUCOE & WDAC<>2
+      # On force l'US
+      [F:SDD]SAU       = [F:REO]STU
+      [F:SDD]SAUSTUCOE = 1
+   Endif
+Endif
+
+#-----------------------------------------------#
+# Création détail livraison                     #
+#-----------------------------------------------#
+Gosub ALI_REOSTA_SDD
+
+If GOK<0  Goto AB_STD Endif
+
+Return
+#########################################################################
+# Livraison d'un manquant sous-traitant
+#########################################################################
+$ALI_STASDD
+
+#MAE, LIV_AUTOBP, l'entête SDH est alimentée une seule fois
+#If WNBLIG=0
+   # Alimentation entête livraison depuis manquant sous-traitant
+#   Gosub ALI_SSTSDH
+#   If GOK=0 Return Endif
+#Endif
+
+Read [STA]STA0=[F:PRH]STOFCY;[F:PRE]ITMREF;0;[F:PRE]SEQ
+If fstat
+   Call RSTA ("STA",[F:PRH]STOFCY-[F:PRE]ITMREF-"0"-num$([F:PRE]SEQ)) From GLOCK
+   Raz GOK : Return
+Endif
+
+# Lecture tables article
+Call LECTABART([F:PRE]ITMREF,[F:PRH]BPCORD)
+If GOK=0 Goto AB_STD Endif
+
+Raz [F:SDD]             : # Bug 82078
+[F:SDD] = [F:ITM]
+If [F:ITS]ITMREF<>"" [F:SDD] = [F:ITS] Endif
+If [F:ITU]ITMREF<>"" [F:SDD] = [F:ITU] Endif
+
+[F:SDD] = [F:PRE]
+
+[F:SDD]SAU       = [F:ITM]STU
+[F:SDD]SAUSTUCOE = 1
+WDAC             = 1
+
+# Alimentation pièce origine du manquant
+[F:SDD]VCRTYPORI = [F:STA]VCRTYP
+[F:SDD]VCRNUMORI = [F:STA]VCRNUM
+[F:SDD]VCRLINORI = [F:STA]VCRLIN
+[F:SDD]VCRSEQORI = [F:STA]VCRSEQ
+
+#-----------------------------------------------#
+# Création détail livraison                     #
+#-----------------------------------------------#
+Gosub ALI_REOSTA_SDD
+
+If GOK<0  Goto AB_STD Endif
+
+Return
+
+#########################################################################
+# Alimentation détail livraison depuis besoin ou manquant sous-traitant
+#########################################################################
+$ALI_REOSTA_SDD
+Local Decimal WANC_CLCAMT1, WANC_CLCAMT2
+Local Char    VAT(GLONVAT)(3)
+Local Integer WRET
+
+# Qté livrée = qté préparée
+[F:SDD]QTYSTU = [F:PRE]QTYSTU
+[F:SDD]QTY    = [F:SDD]QTYSTU*(1/[F:SDD]SAUSTUCOE)
+Call QTEARR([F:SDD]QTY,[F:SDD]SAU) From TRTDIV
+
+If [F:PRE]STOMGTCOD>1
+   # Chargement STOSORW à partir des allocations
+   #  [M:ALP]TRSTYP    = [F:SDH]TRSTYP
+   [M:ALP]TRSTYP    = 20
+   [M:ALP]TRSCOD    = [F:SDH]TRSCOD
+   [M:ALP]VCRTYP    = 3
+   [M:ALP]VCRNUM    = [F:PRE]PRHNUM
+   [M:ALP]VCRLIN    = [F:PRE]PRELIN
+   [M:ALP]VCRSEQ    = 0
+   [M:ALP]STOFCY    = [F:SDH]STOFCY
+   [M:ALP]ITMREF    = [F:PRE]ITMREF
+   [M:ALP]QTY       = [F:SDD]QTYSTU
+   [M:ALP]TYPQTY    = 2
+   [M:ALP]STA       = "*"
+   [M:ALP]PECSCOLOC = 1
+   [M:ALP]BESDAT    = [F:PRH]SHIDAT
+   [M:ALP]DLVDAT    = [F:PRH]DLVDAT
+   [M:ALP]WRH       = ""
+   Raz WRET
+   Call ALLSTOSORW("",1,0,1,1,1,WRET) From STKSOR
+   If WRET<>0
+      Raz GOK : Return
+   Elsif [M:ALP]ALLQTY+[M:ALP]ALLQTYSHT=0
+      Raz GOK : GERR=1
+      GMESSAGE=[F:PRE]PRHNUM-mess(27,159,1)-[F:PRE]ITMREF-
+&              format$(GFMDAT,[F:PRH]SHIDAT)+"\"+mess(156,191,1) :#--CPO 83985 GFMDAT au lieu de GFMD
+      Call ERREUR(GMESSAGE) From GESECRAN
+      Return
+   Else
+      [F:SDD]QTYSTU = [M:ALP]ALLQTY+[M:ALP]ALLQTYSHT
+      [F:SDD]QTY    = [F:SDD]QTYSTU/[F:SDD]SAUSTUCOE
+      Call QTEARR([F:SDD]QTY,[F:SDD]SAU) From TRTDIV
+   Endif
+   # Qté allouée origine = qté allouée (+ qté rupture)
+   WOALQTYSTU = [F:SDD]QTYSTU
+Endif
+
+#alimentation de la désignation traduite
+#[F:SDD]ITMDES1    = [F:ITS]ITMDES1
+#Call CHARGE_DEFITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[F:SDD]ITMDES, "[F:ITM]") From TRTX3   # FGR 29/06/2009 : X3SUIVI56129    # FGR 27/07/2015 : X3SUIVI109274
+Call CHARGE_DEFITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[F:SDD]ITMDES1, "[F:ITM]") From TRTX3   # FGR 29/06/2009 : X3SUIVI56129    # FGR 27/07/2015 : X3SUIVI109274
+#Call CHARGE_ITMDES("DES1AXX",[F:SDH]LAN,[F:ITM]ITMREF,[F:SDD]ITMDES) From TRTX3
+#If [F:SDD]ITMDES = ""
+#    [F:SDD]ITMDES = [F:SDD]ITMDES1
+#Endif
+Call CHARGE_DEFITMDES("DES1AXX",[F:SDH]LAN,[F:ITM]ITMREF,[F:SDD]ITMDES, "[F:ITM]") From TRTX3   # FGR 29/06/2009 : X3SUIVI56129
+
+##alimentation de la commande d'origine
+#[F:SDD]SOHNUM = [F:PRE]ORINUM          : # Bug 82078 : Besoin/manquant sst non lié à une cde
+
+#alimentation des niveaux de taxes
+[F:SDD]VACITM(0) = [F:ITM]VACITM(0)
+[F:SDD]VACITM(1) = [F:ITM]VACITM(1)
+[F:SDD]VACITM(2) = [F:ITM]VACITM(2)
+
+#alimentation des familles statistiques
+[F:SDD]TSICOD(0)=[F:ITM]TSICOD(0)
+[F:SDD]TSICOD(1)=[F:ITM]TSICOD(1)
+[F:SDD]TSICOD(2)=[F:ITM]TSICOD(2)
+[F:SDD]TSICOD(3)=[F:ITM]TSICOD(3)
+[F:SDD]TSICOD(4)=[F:ITM]TSICOD(4)
+
+
+#Call ALITAXEV([F:SDH]VACBPR,[F:SDD]VACITM,VAT) From TRTX3
+Call RECHVATCOD(1,1,[F:SDH]BPCORD,[F:SDD]ITMREF,"SDD",0,VAT) From TRTX3
+[F:SDD]VAT(0) = VAT(0)
+[F:SDD]VAT(1) = VAT(1)
+[F:SDD]VAT(2) = VAT(2)
+
+If [F:ITU]PCK<>""
+   #CPO 63410 - pb découvert lors de la correction de cette fiche
+   # -- l'unité de vente de la ligne doit être égale à l'UV de l'article
+   If [F:SDD]SAU = [F:ITU]SAU
+      [F:SDD]PCK    = [F:ITU]PCK
+      [F:SDD]PCKCAP = [F:ITU]PCKCAP
+   Endif
+Endif
+If [F:SDD]PCK=""
+   #CPO 63410 - pb découvert lors de la correction de cette fiche
+   # -- l'unité de vente de la ligne doit être égale à l'UV de l'article
+   If [F:SDD]SAU = [F:ITM]SAU
+      Call ALIPCK ([F:SDD]ITMREF,[F:SDH]STOFCY,[F:SDD]PCK,[F:SDD]PCKCAP) From TRTVENDIV
+   Endif
+Endif
+[F:SDD]UNTWEI = [F:ITM]ITMWEI
+
+WANC_CLCAMT1=[F:SDD]CLCAMT1 : WANC_CLCAMT2=[F:SDD]CLCAMT2
+# Calcul des montants base calcul taxe
+Call ALICLCAMT([F:SDD]ITMREF, [F:SDD]QTY, -1, "SDD", [F:SDD]CLCAMT1, [F:SDD]CLCAMT2) From TRTX3
+
+# Recherche du prix
+Call RECH_TARIF(1,[F:SDD]ITMREF,0,[F:SDD]QTY,"SDD",[F:SDD]GROPRI) From TRTVENTAR
+
+# Calcul du prix net
+Gosub PRIXNET From TRTVENLIV
+
+# Calcul de la marge
+Gosub MARGE From TRTVENLIV
+
+# Alimentation des données de colisage
+
+If [F:ITF]ITMREF<>[F:ITM]ITMREF | [F:ITF]STOFCY<>[F:SDD]STOFCY
+   Read [ITF] ITF0=[F:ITM]ITMREF ;[F:SDD]STOFCY
+   If fstat Raz [F:ITF] : Endif
+Endif
+[F:SDD]PCKFLG    = [F:ITF]PCKFLG
+
+[F:SDD]PACQTYSTU = [F:PRE]PACQTYSTU
+[F:SDD]PCK       = [F:PRE]PCK
+[F:SDD]PCKCAP    = [F:PRE]PCKCAP
+
+# Suivi texte détail BP sur liv
+Gosub CHARGETXTSDD From TRTVENLIV
+
+#alimentation des textes
+If find(GSALTEXLIN,2,4,5)
+   [F:SDD]SDDTEX = [F:ITU]ITSTEX
+   If [F:SDD]SDDTEX=""
+      [F:SDD]SDDTEX = [F:ITS]ITSTEX
+   Endif
+Endif
+[F:SDD]PRPTEX = [F:ITU]ITPTEX
+If [F:SDD]PRPTEX=""
+   [F:SDD]PRPTEX = [F:ITS]ITPTEX
+Endif
+
+# Date d'expédition
+[F:SDD]SHIDAT = [F:PRH]SHIDAT #Gbn-88678
+
+# Récupération du compteur livraison
+If WSDHLIN=0
+   Gosub REC_CPT_LIV From TRTVENLIV
+   If GOK<1 Goto ALI_REOSTA_SDD_FIN Endif
+Endif
+
+WLIN = WLIN+1000
+[F:SDD]SDHNUM = [F:SDH]SDHNUM
+[F:SDD]SDDLIN = WLIN
+[F:SDD]PRHNUM = [F:PRE]PRHNUM
+[F:SDD]PRELIN = [F:PRE]PRELIN
+
+If dim([F:SDD]CPY)>0 : [F:SDD]CPY=GSOCIETE : Endif
+
+Write [SDD]
+If fstat
+   GOK=0 : Call FSTA("SDD") From GLOCK : Goto ALI_REOSTA_SDD_FIN
+Endif
+
+#-----------------------------------------------#
+# Maj besoin sous-traitant et allocations       #
+#-----------------------------------------------#
+Gosub MAJ_REOSTA
+If GOK<1 Goto ALI_REOSTA_SDD_FIN Endif
+
+#-----------------------------------------------#
+# Maj des sections analytiques                  #
+#-----------------------------------------------#
+Gosub MAJSDD_CPTANALIN From TRTVENLIV
+If GOK<1 Goto ALI_REOSTA_SDD_FIN Endif
+
+#-----------------------------------------------#
+# Cumul et alimentation zones entête livraison  #
+#-----------------------------------------------#
+Call ALICUMSDH([F:SDD]VCRTYPORI) From TRTVENLIV     : # Bug 82078 : Ajout origine de la livraison
+
+Call ECR_TRACE("          "+mess(18,007,1)-[F:SDD]ITMREF-[F:SDD]ITMDES1+
+&    "     "+mess(40,191,1)-num$([F:SDD]QTY),0)
+&    From GESECRAN
+
+
+# Point d'entrée après création ligne détail livraison
+GPOINT="AUTDLVDET" : Gosub ENTREE From EXEFNC
+If GOK<1 Goto ALI_REOSTA_SDD_FIN Endif
+
+$ALI_REOSTA_SDD_FIN
+Call RAZSTOSORW From STKSOR
+
+Return
+
+#########################################################################
+# Alimentation entête livraison depuis besoin sous-traitant
+#########################################################################
+$ALI_SSTSDH
+
+Raz WLIN
+Raz WDLRNOT, WDLRATI
+
+#MAE, LIV_AUTOBP
+#lecture des bons de prépas
+Gosub READ_PRH
+
+Raz [F:SDH]             : # Bug 82078
+[F:SDH] = [F:PRH]
+
+# Récupération du site de vente
+Read [FCY]FCY0=[F:PRH]STOFCY
+If fstat
+   GOK=0 : Call RSTA ("FCY",[F:PRH]STOFCY) From GLOCK : Goto AB_STD
+Endif
+If [F:FCY]SALFLG=2
+   [F:SDH]SALFCY = [F:PRH]STOFCY
+Elsif GFCYDEF(5)<>""
+   [F:SDH]SALFCY = GFCYDEF(5)
+Else
+   Filter [FCY] Where SALFLG=2
+   Read [FCY]FCY0 First
+   [F:SDH]SALFCY = [F:FCY]FCY
+   Filter [FCY]
+Endif
+
+If [F:SDH]SALFCY<>WSVGFCY
+   # Alimentation paramètres de vente
+   Call GLOBVAR([F:SDH]SALFCY) From WWGLOBVEN
+   WSVGFCY = [F:SDH]SALFCY
+Endif
+
+# Livraison pour sous-traitance
+#  [F:SDH]TRSTYP = 20
+[F:SDH]SCO    = 2
+[F:SDH]LND    = 1
+
+Read [BPR]BPR0=[F:SDH]BPCORD
+If fstat
+   GOK=0 : Call RSTA ("BPR",[F:SDH]BPCORD) From GLOCK : Goto AB_STD
+Endif
+
+Read [BPC]BPC0=[F:SDH]BPCORD
+If fstat
+   GOK=0 : Call RSTA ("BPC",[F:SDH]BPCORD) From GLOCK : Goto AB_STD
+Endif
+
+#test MAE
+#Call ALIBETCPY(4,[F:SDH]SALFCY,[F:SDH]BPCORD,GBIDC1,GBIDC2,GBIDC3,
+#&              [F:SDH]BETFCY,[F:SDH]BETCPY) From TRTVENISOC
+Call ALIBETCPY(4,[F:SDH]SALFCY,[F:SDH]BPCORD,GBIDC1,GBIDC2,GBIDC3,
+&              GBIDI1,GBIDI2) From TRTVENISOC
+
+[F:SDH]BETFCY = GBIDI1
+[F:SDH]BETCPY = GBIDI2
+
+Read [BPD]BPD0=[F:SDH]BPCORD;[F:SDH]BPAADD
+If fstat
+   GOK=0 : Call RSTA ("BPD",[F:SDH]BPCORD-[F:SDH]BPAADD) From GLOCK : Goto AB_STD
+Endif
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+# Lecture type de livraison
+[F:SDH]SDHTYP=[M:PDL]SDHTYPSCO
+Gosub SDHTYP_FROM_F From TRTVENLIV
+If GERR=1 GOK=0 : Goto AB_STD Endif
+# 75115
+
+Call ALICLISDH_F([F:SDH]BPCORD,[F:SDH]BPAADD) From TRTVENLIV
+If GOK=0 Goto AB_STD Endif
+
+# Alimentation textes entête et pied BP
+[F:SDH]PRPTEX1 = [F:PRH]PRPTEX1
+[F:SDH]PRPTEX2 = [F:PRH]PRPTEX2
+
+# Renseignement des unités de répartition
+[F:SDH]DSPWEU = GSALDSPWEU
+[F:SDH]DSPVOU = GSALDSPVOU
+# Issue 111484 - 2015-11-09 by CPO : Sdelivery partially updated for sub-contr picking ticket
+[F:SDH]PRNNDE = 1
+[F:SDH]CFMFLG = 1
+[F:SDH]INVFLG = 1
+[F:SDH]RTNSTA = 1
+# End issue 111484
+Return
+
+#########################################################################
+# Mise à jour du besoin sous-traitant et des allocations
+#########################################################################
+$MAJ_REOSTA
+
+#-------------------------#
+# Maj des allocations     #
+#-------------------------#
+[M:ALP]VCRTYP     = 4
+[M:ALP]VCRNUM     = [F:SDH]SDHNUM
+[M:ALP]VCRLIN     = [F:SDD]SDDLIN
+[M:ALP]VCRSEQ     = 0
+[M:ALP]STOFCY     = [F:SDH]STOFCY
+[M:ALP]ITMREF     = [F:SDD]ITMREF
+[M:ALP]TYPQTY     = 2
+[M:ALP]BESDAT     = [F:SDH]SHIDAT
+Raz [M:ALP]ALLDAT, [M:ALP]DESQTY, [M:ALP]ALLQTY
+
+# Avec désallocation préparation origine
+[M:ALP]VCRTYPORI  = 3
+[M:ALP]VCRNUMORI  = [F:PRH]PRHNUM
+[M:ALP]VCRLINORI  = [F:PRE]PRELIN
+[M:ALP]VCRSEQORI  = 0
+[M:ALP]ALLTYPORI  = 2
+
+[M:ALP]QTY        = [F:SDD]QTYSTU
+#--- Bug 81869
+[M:ALP]ALLQTY     = [F:SDD]QTYSTU
+#---
+Raz [M:ALP]MVTDES
+# Mise à jour des allocations à partir de l'écran de travail STOSORW
+# Avec désallocation du bon de préparation
+Call ENRSTOALL(1,1,WRET) From STKALL
+If WRET<>0 : Raz GOK : Return : Endif
+
+#---
+# La suppression du besoin de réappro ou du manquant sous-traitant
+# ne se fait plus à la création de la livraison mais à sa validation
+#---
+# Suppression du besoin de réapprovisionnement
+#If [F:PRE]ORITYP=3
+#   Readlock [REO]REO0=[F:SDH]STOFCY;[F:SDH]BPCLOC;[F:SDD]ITMREF
+#   If fstat
+#      Call RSTA ("REO",[F:SDH]STOFCY-[F:SDH]BPCLOC-[F:SDD]ITMREF) From GLOCK
+#      GOK=0 : Return
+#   Else
+#      Delete [REO]
+#   Endif
+# Suppression du manquant sous-traitant
+#Elsif [F:PRE]ORITYP=4
+#   Call DELALL(36,[F:SDD]VCRNUMORI,[F:SDD]VCRLINORI,[F:SDD]VCRSEQORI,
+#&              [F:SDD]ITMREF,2,LQTA,LSHT,LRET) From STKALL
+#Endif
+
+Return
+
+#########################################################################
+# Mise à jour du détail bon de préparation
+#########################################################################
+$MAJ_PRE
+Readlock [PRE] Curr
+If fstat
+   Call RSTA ("PRE",[F:PRH]PRHNUM-num$([F:PRE]PRELIN)) From GLOCK
+   GOK=0 : Goto AB_STD
+Endif
+
+[F:PRE]ALLQTY = 0
+[F:PRE]SHTQTY = 0
+
+Rewrite [PRE]
+If fstat
+   GOK=0 : Call FSTA("PRE") From GLOCK : Goto AB_STD
+Endif
+
+# Si ligne de préparation colisée
+If [F:PRE]PACQTYSTU>0
+   LRET=0
+   # Transfert du colisage de la ligne de préparation vers la ligne de livraison
+   Call TRF_COLISAGE([F:PRH]PRHNUM,[F:PRE]PRELIN,[F:SDH]SDHNUM,[F:SDD]SDDLIN,
+&                    "",LRET) From STKPREPA
+   If LRET=1 : GOK=0 : Goto AB_STD : Endif
+   COLFLG = 1
+Endif
+
+Return
+
+#########################################################################
+# Mise à jour de l'entête bon de préparation
+#########################################################################
+$MAJ_PRH
+
+[F:PRH]DLVFLG = 3
+[F:PRH]SDHNUM = [F:SDH]SDHNUM
+#[F:PRH]SHIDAT = [F:SDH]SHIDAT
+#[F:PRH]DLVDAT = [F:SDH]DLVDAT
+
+Rewrite [PRH]
+If fstat
+   GOK=0 : Call FSTA("PRH") From GLOCK : Goto AB_STD
+Endif
+
+# Si bon de préparation colisé
+If [F:PRH]PACFLG=2
+   LRET=0
+   # Transfert du colisage de la préparation vers la livraison
+   #MAE, le 03/11/08, on ne doit pas mettre à jour l'entête de livraison => LSUP <> ""
+   #Call TRF_COLISAGE([F:PRH]PRHNUM,0,[F:SDH]SDHNUM,0,"",LRET) From STKPREPA
+   Call TRF_COLISAGE([F:PRH]PRHNUM,0,[F:SDH]SDHNUM,0,"PRH",LRET) From STKPREPA
+   If LRET=1 : GOK=0 : Goto AB_STD : Endif
+   COLFLG = 1
+Endif
+
+Return
+
+#########################################################################
+# Ecriture de l'entête livraison
+#########################################################################
+$ECR_SDH
+#--- Issue 104781
+#Trbegin [SDH]
+
+# Recherche tarif transporteur
+If GFRENUM <> 0
+   Gosub RECH_TARIF_TRSP From TRTVENLIV
+Endif
+
+# Maj sf si livraison intra-société
+If !([F:SDH]BETFCY=2 & [F:SDH]BETCPY<=1)
+   # Maj mouvement client (en-cours livraison)
+   Call  MAJMVC ([F:SDH]BPCORD,[F:SDH]CUR,[F:SDH]CHGTYP,0,[F:SDH]SHIDAT,
+&                [F:SDH]SDHNUM,[F:SDH]SALFCY,0,[F:SDH]DLVATI,"+","O","",
+&                [F:SDH]LND) From TRTBPMVT
+   If GOK <= 0 Goto AB_STD Endif
+Endif
+
+If dim([F:SDH]CPY)>0 : [F:SDH]CPY=GSOCIETE : Endif
+
+# Alimentation des montants en devise société
+Call COURMNT([F:SDH]CUR,GLOCALDEV,GLOCALDEV,[F:SDH]CHGTYP,[F:SDH]DLVDAT,1,
+&            [F:SDH]DLVNOT,[F:SDH]DLVNOTL,[F:SDH]CHGRAT,STAT) From TRTDEV
+Call COURMNT([F:SDH]CUR,GLOCALDEV,GLOCALDEV,[F:SDH]CHGTYP,[F:SDH]DLVDAT,1,
+&            [F:SDH]DLVATI,[F:SDH]DLVATIL,[F:SDH]CHGRAT,STAT) From TRTDEV
+
+#----------------------------------------------------------------#
+# 104662 SST for Picking Tickets                                 #
+# Tax by document - before VALTTC call                           #
+#----------------------------------------------------------------#
+# If func AFNC.ACTIV("LTA") & GLOCUSATAX  # 106867.o
+If func AFNC.ACTIV("LTA") & [F:CPY]SSTTAXACT = 2  # 106867.n
+  GTAXBYDOC = 1
+Endif
+
+# --- Valorisation TTC (idem calcul facture)
+[M:SDH0] = [F:SDH] : [M:SDH1] = [F:SDH] : [M:SDH2] = [F:SDH] : [M:SDH3] = [F:SDH]
+Local Char WGREP : WGREP=GREP
+GREP="C"
+Global Integer G_CLCDSPLIN : G_CLCDSPLIN=1
+[F:SOH1]=[F:SOH] #Gbn-82291
+
+# 101874 : V9 : Taxe code control
+# Valuation is always done in this case
+GVALTTC=2
+#---- Paramètres complementaires contrôle des taxes
+# PARAM_T(0) : Flag contrôle des taxes             (1=Non/2=Oui)
+# PARAM_T(1) : Lecture de la trace par le sous-pro (1=Non avec msg/2=Oui avec msg/3=Non sans msg/4=Non sans msg)
+# PARAM_T(2) : Flag retour                         (1=KO/2=OK)
+Local    Char     PARAM_T (25) (0..10)
+PARAM_T(0)="2"      : # Contrôle des taxes lors de la création
+PARAM_T(1)="3"      : # Pas d'affichage du msg, pas de lecture de la trace
+PARAM_T(2)="0"
+Call VALTTC ("GESSDHF", PARAM_T) From TRTVENFACR
+#Call VALTTC ("GESSDHF") From TRTVENFACR
+If PARAM_T(2)="1" GOK=0 : Goto AB_STD Endif
+# 101874
+
+[F:SOH]=[F:SOH1] #Gbn-82291
+GREP=WGREP
+
+# Ecriture entête livraison
+Write [SDH]
+If fstat
+   GOK=0: Call FSTA("SDH") From GLOCK: Goto AB_STD
+Else
+   WNBLIV +=1
+   LIVFLG = 1
+Endif
+
+# Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+Gosub SDD_UPD_DSPLIN
+# End issue 109784
+
+#--CPO 84133 Pb de stockage valo dans SVCRVAT et SVCRFOOT
+#----------------------------------------------------------------#
+# Création des enregistrements dans SVCRVAT et SVCRFOOT          #
+#----------------------------------------------------------------#
+Call UPD_VALORISATION ("C","SDH") From TRTVENFACC
+If GOK < 1 Goto AB_STD Endif
+#--/CPO
+
+# Pour mettre à jour des tables annexes
+GPOINT="AUTDLVMAJ" : Gosub ENTREE From EXEFNC
+If GOK <= 0 Goto AB_STD Endif
+
+# Trace livraison
+#Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+#&              From GESECRAN
+
+#----- Bon de livraison -----#
+If [M:PDL]NDEFLG=2 & [M:PDL]NDENAM<>"" & [M:PDL]NDEDEN<>""
+   #----- Recherche du nouveau code état à partir du modèle -----#
+   If [F:BPC]BPCNUM<>[F:SDH]BPCORD
+      Read [BPC] BPC0=[F:SDH]BPCORD : If fstat  Raz [F:BPC] : Endif
+   Endif
+   If [F:BPC]TPMCOD<>""
+      If [F:TPM]TPMCOD<>[F:BPC]TPMCOD
+         Read [TPM] TPM0=[F:BPC]TPMCOD : If fstat  Raz [F:TPM] : Endif
+      Endif
+      If [F:TPM]SALDLV<>""
+         WARP_RPTCOD(0)=[F:TPM]SALDLV
+      Else
+         WARP_RPTCOD(0)=[M:PDL]NDENAM
+      Endif
+   Else
+      WARP_RPTCOD(0)=[M:PDL]NDENAM
+   Endif
+   #----- Nombre de copies -----#
+   WARP_NBRCPY=[F:SDH]COPNBR
+   #----- Ecriture AREPORTM et màj indicateur d'impression sur entête livraison -----#
+   Call ALIM_ETAT(2,WARP_NBRCPY,WARP_RPTCOD,WARP_NUMREQ,WARP_NUMLIG,WARP_SEQREQ) From TRTX3ETA
+Endif
+
+# Si présence module Support Client et validation des livraisons
+If GMODU(12)=2 & [M:PDL]CFMDLV = 2
+   # Alimentation des bornes min et max des livraisons traitées
+   If STRNUM=""
+      STRNUM=[F:SDH]SDHNUM
+   Elsif STRNUM>[F:SDH]SDHNUM
+      STRNUM=[F:SDH]SDHNUM
+   Endif
+   If ENDNUM=""
+      ENDNUM=[F:SDH]SDHNUM
+   Elsif ENDNUM<[F:SDH]SDHNUM
+      ENDNUM=[F:SDH]SDHNUM
+   Endif
+Endif
+
+#--- Issue 104781
+#Commit
+
+# Si ligne de préparation colisée
+If COLFLG > 0
+   LRET=0
+   # Transfert du colisage de la ligne de préparation vers la ligne de livraison
+   Call TRF_COLISAGE([F:PRH]PRHNUM,[F:PRE]PRELIN,[F:SDH]SDHNUM,[F:SDD]SDDLIN,
+&                    "SDH",LRET) From STKPREPA
+   If LRET=1 : GOK=0 : Goto AB_STD : Endif
+Endif
+
+Return
+
+#########################################################################
+# Validation de la livraison
+#########################################################################
+$VALID_SDH
+
+SYMBOLE = "SDH"+[F:SDH]SDHNUM
+Lock = SYMBOLE With lockwait=0
+If fstat=1
+   # Modification en cours sur un autre poste
+   Call ECR_TRACE("          "+[F:SDH]SDHNUM-mess(10,100,1),1) From GESECRAN
+Else
+   Call VALIDATION([F:SDH]SDHNUM) From TRTVENLIVV
+   If GOK=1
+      Call ECR_TRACE(mess(54,198,1)-mess(3,429,1),0) From GESECRAN
+   Endif
+Endif
+Unlock =SYMBOLE
+
+Return
+
+#########################################################################
+Subprog LECTABART(LITM,LBPC)
+Value Char LITM
+Value Char LBPC
+
+If [F:ITM]ITMREF <> LITM
+   Read [ITM]ITM0 = LITM
+   If fstat
+      GOK=0 : Call RSTA("ITM",[F:SOQ]ITMREF) From GLOCK : End
+   Endif
+Endif
+If [F:ITS]ITMREF <> LITM
+   Read [ITS]ITS0 = LITM
+   If fstat Raz [F:ITS] Endif
+Endif
+If ([F:ITU]ITMREF <> LITM) | ([F:ITU]BPCNUM <> LBPC)
+   Read [F:ITU]ITU0 = LITM;LBPC
+   If fstat Raz [F:ITU] Endif
+Endif
+End
+
+#########################################################################
+$ROL_TRT
+Rollback
+GIMPORT=1
+Call ROLL From GLOCK
+GIMPORT=0
+If GROLL
+   Call ECR_TRACE(mess(17,107,1),1)From GESECRAN
+Else
+   Gosub LIV_PREPA
+Endif
+Return
+
+$AB_STD
+If adxlog <> 0 Then  # FGR 13/11/2014 : X3SUIVI103968 : tester la transaction
+  Rollback
+Endif
+Call ECR_TRACE(mess(17,107,1),1)From GESECRAN
+
+Return
+
+$ERRBATCH
+Call ECR_TRACE(errmes$(errn)-num$(errl)-errm,1) From GESECRAN
+End
+
+#########################################################################
+
+
+
+
+
+#########################################################################
+# Gestion du masque PREDLV
+#########################################################################
+Subprog D_CPY(VALEUR)
+Variable Char    VALEUR()
+Call GETSOC (GFCYDEF(7)) From DEVSUB
+VALEUR=GSOCIETE
+[M:PDL]STOFCY=GFCYDEF(7)
+End
+
+Subprog AM_CPY(VALEUR)
+Variable Char    VALEUR()
+GSOCIETE=VALEUR
+Raz [M:PDL]STOFCY
+End
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+######################################################################################
+Subprog AM_STOFCY(VALEUR)
+Variable Char    VALEUR()
+# --> Chargement globales référenciels, comptes et sections de la société
+If GFCY<>VALEUR : GFCY=VALEUR : Gosub CHARG_PARAM Endif
+
+If [M]FLG1=2 [M]SDHTYPNOR=GSDHTYPNOR Endif
+If dim(GSDHTYPLND)>0 & [M]FLG2=2
+  [M]SDHTYPLND=GSDHTYPLND
+Endif
+If dim(GSDHTYPSCO)>0 & [M]FLG3=2
+  [M]SDHTYPSCO=GSDHTYPSCO
+Endif
+Affzo [M]10
+
+End
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+######################################################################################
+Subprog AM_FLG1(VALEUR)
+Variable Integer VALEUR
+If VALEUR = 1
+  Raz [M]SDHTYPNOR : Diszo [M]SDHTYPNOR
+Else
+  [M]SDHTYPNOR=GSDHTYPNOR : Actzo [M]SDHTYPNOR
+Endif
+Affzo [M]10
+End
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+######################################################################################
+Subprog AM_FLG2(VALEUR)
+Variable Integer VALEUR
+If VALEUR = 1
+  Raz [M]SDHTYPLND : Diszo [M]SDHTYPLND
+Else
+  If dim(GSDHTYPLND)>0 [M]SDHTYPLND=GSDHTYPLND Endif
+  Actzo [M]SDHTYPLND
+Endif
+Affzo [M]SDHTYPLND : Affzo [M]ZSDHTYPLND
+End
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+######################################################################################
+Subprog AM_FLG3(VALEUR)
+Variable Integer VALEUR
+
+If VALEUR = 1
+  Raz [M]SDHTYPSCO : Diszo [M]SDHTYPSCO
+Else
+  If dim(GSDHTYPSCO)>0 [M]SDHTYPSCO=GSDHTYPSCO Endif
+  Actzo [M]SDHTYPSCO
+Endif
+Affzo [M]SDHTYPSCO : Affzo [M]ZSDHTYPSCO
+End
+######################################################################################
+Subprog AM_PRHNUMSTR(VALEUR)
+Variable Char    VALEUR()
+If VALEUR<>""
+  If [M:PDL]PRHNUMEND=""
+     [M:PDL]PRHNUMEND=VALEUR
+     Affzo [M]PRHNUMEND
+  Endif
+Endif
+End
+
+Subprog AM_BPCORDSTR(VALEUR)
+Variable Char    VALEUR()
+If VALEUR<>""
+   If [M:PDL]BPCORDEND=""
+      [M:PDL]BPCORDEND=VALEUR
+      Affzo [M]BPCORDEND
+   Endif
+   Actzo [M]BPAADDSTR
+Else
+   Diszo [M]BPAADDSTR
+Endif
+End
+
+Subprog AM_BPAADDSTR(VALEUR)
+Variable Char    VALEUR()
+If VALEUR<>""
+   If [M:PDL]BPAADDEND=""
+      [M:PDL]BPAADDEND=VALEUR
+      Affzo [M]BPAADDEND
+   Endif
+Endif
+End
+
+Subprog AP_BPCORDEND(VALEUR)
+Variable Char    VALEUR()
+If VALEUR<>""
+   Actzo [M]BPAADDEND
+Else
+   Diszo [M]BPAADDEND
+Endif
+End
+
+Subprog C_BPAADDEND(VALEUR)
+Variable Char    VALEUR()
+If [M:PDL]BPCORDSTR=[M:PDL]BPCORDEND
+   If VALEUR<>"" & VALEUR<[M:PDL]BPAADDSTR
+      GMESSAGE=mess(44,199,1) : mkstat=2
+   Endif
+Endif
+End
+
+Subprog AM_BPTNUMSTR(VALEUR)
+Variable Char    VALEUR()
+If VALEUR<>""
+   If [M:PDL]BPTNUMEND=""
+      [M:PDL]BPTNUMEND=VALEUR
+      Affzo [M]BPTNUMEND
+   Endif
+Endif
+End
+
+Subprog AM_DRNSTR(VALEUR)
+Variable Integer VALEUR
+If VALEUR<>0
+   If [M:PDL]DRNEND=0
+      [M:PDL]DRNEND=VALEUR
+      Affzo [M]DRNEND
+   Endif
+Endif
+End
+
+Subprog C_DRNEND(VALEUR)
+Variable Integer VALEUR
+If VALEUR<>0 & VALEUR<[M:PDL]DRNSTR
+   GMESSAGE=mess(44,199,1) : mkstat=2
+Endif
+End
+
+Subprog AP_NDEFLG(VALEUR)
+Variable Integer VALEUR
+If VALEUR = 1
+   Raz [M:PDL]NDENAM, [M:PDL]NDEDEN, [M:PDL]NDEIMP, [M:PDL]NDESRV
+   Diszo [M]NDENAM, NDEDEN
+Else
+   If vireblc([M:PDL]NDENAM,2)=""
+      Call INIT_ARP("SDH", [M:PDL]NDENAM) From TRTVENIMP
+      Actzo [M]NDENAM,NDEDEN
+   Endif
+Endif
+Affzo [M]NDENAM,NDEDEN,NDEIMP,NDESRV
+End
+
+Subprog C_NDENAM(VALEUR)
+Variable Char    VALEUR()
+Local    Char    AUTSIT(10)
+Local    Integer OK
+# Document obligatoire si impression bon de livraison
+If [M:PDL]NDEFLG = 2 & VALEUR = ""
+   GMESSAGE=mess(10,123,1) : mkstat = 2
+   End
+Endif
+End
+
+Subprog C_NDEDEN(VALEUR)
+Variable Char    VALEUR()
+# Imprimante obligatoire si impression
+If [M:PDL]NDENAM <> "" & VALEUR = ""
+   GMESSAGE=mess(10,123,1) : mkstat = 2
+Endif
+End
+
+Subprog AP_NDEDEN(VALEUR)
+Variable Char    VALEUR()
+Call INIT_SRV(VALEUR, [M:PDL]NDESRV,[M:PDL]NDEIMP) From TRTVENIMP
+Affzo [M]NDESRV, NDEIMP
+[M:PDL]PRTCOP2=func TRTVENIMP.GET_NBRCPY_AIM(VALEUR)#Fq73266-Gbn
+End
+
+######################################################################################
+#--------------------------------------------------------------------------#
+# Chargement des paramètres avec GFCY = Site de la facture                 #
+# ------------------------------------------------------------------------ #
+# Chargement des globales référenciels, comptes et sections de la société  #
+# Chargement des paramètres de localisation                                #
+# ------------------------------------------------------------------------ #
+$CHARG_PARAM
+Local  Char     PARAM2(10)
+
+# --- Chargement des globales référenciels, comptes et sections de la société
+Call GETCPY(GFCY,"",0,"") From TRTX3CPT
+# --- Si changement société -----#
+If GSOC_UPDFLG
+    # --- Chargement des paramètres de localisation
+    # --- Numérotation Argentine -----#
+    If func AFNC.ACTIV("KAG")
+        Call PARAM(GFCY,"ARGNUM",PARAM2) From ADOVAL
+        GLOCARGNUM=val(PARAM2)
+        If GLOCARGNUM>0  GLOCARGNUM-=1 : Endif
+    Else
+        Raz GLOCARGNUM
+    Endif
+    # --- Localisation argentine : Pour la numérotation, recherche du type de document lié aux livraisons
+    If GLOCARGNUM Gosub REC_ARGNUM_TYPDOC From TRTVENLIV : If GERR=1 Return Endif : Endif
+
+    # 75115 : V7 : Extension of Digital Signature : New field delivery type
+    # --> Recherche Types de livraison utilisateur
+    Call PARAML(GFCY,"SDHTYPNOR",GSDHTYPNOR) From ADOVAL
+    If dim(GSDHTYPLND)>0
+      Call PARAML(GFCY,"SDHTYPLND",GSDHTYPLND) From ADOVAL
+    Endif
+    If dim(GSDHTYPSCO)>0
+      Call PARAML(GFCY,"SDHTYPSCO",GSDHTYPSCO) From ADOVAL
+    Endif
+    # 75115
+
+    Call LEC_CPY(GSOCIETE) From CPTLEC   # 106867.n
+
+Endif
+
+Return
+
+#-----------------------------------------------------------------------#
+# Chargement dans le fichier de travail                                 #
+#-----------------------------------------------------------------------#
+$CHARGEFIC
+Call DEBTRANS From GLOCK
+$CHGFIC
+#GOK=1
+
+# Issue 116439 - 2016-05-11 by ERMIL : Move the TRBEGIN to after the read of SOH and credit card Auth check
+#Trbegin[SWD]
+
+# Lecture entête bon de préparation
+Read [PRH]PRH0 Curr
+If    fstat=1 : GOK=-1 : GLOCK="$STOPREH"+[F:PRH]PRHNUM : Goto ROL_CHGFIC
+Elsif fstat   : GOK=0  : Call RSTA("PRH",[F:PRH]PRHNUM ) From GLOCK : Goto AB_STD
+Endif
+
+# Lecture détail bon de préparation
+#Fq85232-Gbn
+#Read [PRE]PRE0 = [F:PRH]PRHNUM;1
+Filter [PRE] Where PRHNUM=[F:PRH]PRHNUM
+#WNBREC1=nbrecord([F:PRE])                : #--- Issue 118769 for IMPLUS
+WNBREC1=rowcount([F:PRE])                 : #--- Issue 120873
+Read [F:PRE] First
+If    fstat=1 : GOK=-1 : GLOCK="$STOPRED"+[F:PRE]PRHNUM-num$([F:PRE]PRELIN) : Goto ROL_CHGFIC
+Elsif fstat   : GOK=0  : Call RSTA("PRE",[F:PRE]PRHNUM-num$([F:PRE]PRELIN)) From GLOCK : Goto AB_STD
+Endif
+Filter [PRE]
+
+#--- Issue 118769 for IMPLUS
+If [F:PRH]ORIPRH<3
+  WORINUM=[F:PRE]ORINUM
+  Filter [PRE] Where PRHNUM=[F:PRH]PRHNUM & ORINUM=WORINUM
+  #WNBREC2=nbrecord([F:PRE])
+  WNBREC2=rowcount([F:PRE])               : #--- Issue 120873
+  Filter [PRE]
+Endif
+#--- End issue 118769 for IMPLUS
+
+#lecture des commandes
+Read [SOH]SOH0=[F:PRE]ORINUM
+
+# Issue 116439 - 2016-05-11 by ERMIL : Check for credit card auth before transaction
+#----------------------------------------------------------------#
+# 103163 Sage Exchange                                           #
+# Check for a valid auth and skip if not possible                #
+#----------------------------------------------------------------#
+If func AFNC.ACTIV("SEPP") & func SEPPLIB.SEPP_DOC([F:SOH]PTE)
+  Local Integer SEERR
+  Local Char    SEMESSAGE(255)
+  Call AUTH_CHK(2,[F:SOH]SOHNUM,SEERR,SEMESSAGE) From SEPPLIB
+  If SEERR
+    Call ECR_TRACE(SEMESSAGE, 1) From GESECRAN
+    GOK=0 : Return
+  Endif
+  #119503 - JOBRO - Check the order to see if it is on Sage Exchange credit hold.
+  Local Decimal WMNT
+  Local Integer CDTSTA
+  Call SDCDTSTA([F:SOH]SOHNUM,[F:SOH]BPCORD,[F:SOH]CHGTYP,0,"",[F:SOH]ORDDAT,[F:SOH]UNL, 2,
+&             CDTSTA,WMNT,WMNT) From TRTVENCDT
+  If CDTSTA=5
+    SEMESSAGE = mess(98,197,1)-":"-[F:SOH]SOHNUM-mess(99,197,1)-":"-[F:SOH]BPCORD - mess(5,2092,1)
+    Call ECR_TRACE(SEMESSAGE, 1) From GESECRAN
+    GOK=0 : Return
+  Endif
+  #End 119503
+Endif
+
+Trbegin[SWD]
+# End issue 116439
+
+#--- Dem 83086
+GPOINT="PREDLVSEL" : Gosub ENTREE From EXEFNC
+If GOK=0 Goto AB_STD Endif
+#---
+
+Raz [F:SWD]
+[F:SWD]PRONUM   = adxuid(1)
+[F:SWD]SOHNUM = [F:PRH]PRHNUM
+#[F:SWD]SOPLIN = [F:PRE]PRELIN
+
+# --- Dans SWDKEY separateurs ~ uniquement sur quelques champs car clé <= 128
+[F:SWD]SWDKEY = [F:PRH]BPCORD
+[F:SWD]SWDKEY  += "~"+[F:PRH]BPAADD          #client livré
+[F:SWD]SWDKEY  += "~"+[F:SOH]BPCINV          #client facture
+[F:SWD]SWDKEY  += "~"+[F:PRH]BPTNUM          #transporteur
+[F:SWD]SWDKEY  += "~"+num$([F:PRH]DRN)       #code tournée
+
+# 75115 : V7 : Extension of Digital Signature : New field delivery type
+# Ajout du critère sur le type de livraison  #type retour
+If [F:PRH]ORIPRH<>3                          #origine commande
+  If [F:SOH]SDHTYP<>""
+    [F:SWD]SWDKEY  += "~"+[F:SOH]SDHTYP
+  Elsif find([F:SOH]SOHCAT,1,4)
+    [F:SWD]SWDKEY  += "~"+[M:PDL]SDHTYPNOR
+  Elsif [F:SOH]SOHCAT=2
+    [F:SWD]SWDKEY  += "~"+[M:PDL]SDHTYPLND
+  Endif
+Else                                         #origine besoin sous-traitant
+  [F:SWD]SWDKEY  += "~"+[M:PDL]SDHTYPSCO
+Endif
+# 75115
+# --- SWDKEY rempli à 61 caractères (sur 80)
+
+# FGR 20/04/2014 : X3SUIVI93226 (début) ne sert plus à rien
+##--- Bug 82249
+##[F:SWD]SWDDATA  = [F:PRE]ORINUM    #commande origine du bon
+#If find([F:PRE]ORITYP,1,2)
+#   [F:SWD]SWDDATA  = [F:PRE]ORINUM
+#Else
+#   [F:SWD]SWDDATA  = ""
+#Endif
+##---
+# FGR 20/04/2014 : X3SUIVI93226 (fin)
+
+[F:SWD]SWDDATA2  = num$([F:PRH]ORIPRH)    #origine du bon
+
+#--- Issue 118769 for IMPLUS
+If WORINUM<>"" and WNBREC1=WNBREC2 and [F:PRH]ORIPRH<3
+  [F:SWD]SWDDATA2 += "~"
+  [F:SWD]SWDDATA2 += WORINUM
+Endif
+#--- End issue 118769 for IMPLUS
+
+#--- Bug 70801
+#[F:SWD]SWDDATA += "~"+toupper(vireblc([F:SOH]BPDNAM(0),4))          # FGR 20/04/2014 : X3SUIVI93226
+[F:SWD]SWDDATA  = toupper(vireblc([F:SOH]BPDNAM(0),4))               # FGR 20/04/2014 : X3SUIVI93226
+[F:SWD]SWDDATA += toupper(vireblc([F:SOH]BPDADDLIG(0),4))
+[F:SWD]SWDDATA += toupper(vireblc([F:SOH]BPDPOSCOD,4))
+[F:SWD]SWDDATA += toupper(vireblc([F:SOH]BPDCTY,4))
+[F:SWD]SWDDATA += toupper(vireblc([F:SOH]BPDSAT,4))
+#--- End
+# --- SWDDATA rempli à 191 (sur 250)
+
+[F:SWD]ODL = [F:SOH]ODL        #1 cde par livraison
+[F:SWD]IME = [F:SOH]IME        #mode de facturation
+
+# Attribution des SWDKEYD
+# Issue 115228 - 2016-06-29 by CPO : PE regroupement
+GPOINT="PREDLVGROUP" : Gosub ENTREE From EXEFNC
+# End issue 115228
+#--- Bug 70801
+#If [F:SWD]SWDDATA<>""
+If [F:PRE]ORINUM<>""
+#---
+
+   Filter [SWD3] Where PRONUM=[F:SWD]PRONUM & SWDKEY=[F:SWD]SWDKEY & SWDDATA=[F:SWD]SWDDATA & SWDDATA2=[F:SWD]SWDDATA2
+   Read [SWD3] First
+   If fstat
+      WSWDKEYD += 1
+      [F:SWD]SWDKEYD=WSWDKEYD
+   Else
+      [F:SWD]SWDKEYD=[F:SWD3]SWDKEYD
+   Endif
+   Filter [SWD3]
+Endif
+
+Write [SWD]
+If fstat
+   GOK=0 : Call FSTA("SWD") From GLOCK : Goto AB_STD
+Endif
+
+# Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+#--DO NOT CHANGE unless you know what you're doing
+#--Before commiting, we have to handle the special DME cases
+If [F:PRH]ORIPRH=1 #--only Sales order are concerned
+  #--Needed in case of setting the GOK=0 during the folliwing For loop
+  #--If GOK=0, we have to cancel new added values during the For loop
+  WPREVIOUS_NBLIG=[M:SWRK1]NBLIG
+
+  Filter [PRE] Where PRHNUM=[F:PRH]PRHNUM
+  For [PRE]
+    If [F:PRE]ORINUM<>""
+      If [F:SOH]SOHNUM<>[F:PRE]ORINUM
+        Read [F:SOH]SOH0=[F:PRE]ORINUM
+        If fstat : Raz [F:SOH] : Endif
+      Endif
+      #--Only Sales orders having the DME property set to 2 'Ligne complète' or 3 'Cde complète'
+      If find([F:SOH]DME,2,3)>0
+        Read [F:SOQ]SOQ0=[F:PRE]ORINUM;[F:PRE]ORILIN;[F:PRE]ORISEQ
+        If fstat : Raz [F:SOQ] : Endif
+
+        #--1st : check if the order line is fully closed (by Picking tickets, Deliveries, Mannually closed etc)
+        If [F:SOQ]SOQSTA<>3 and [F:SOQ]QTY-([F:SOQ]ODLQTY+[F:SOQ]DLVQTY+[F:SOQ]OPRQTY+[F:SOQ]PREQTY)>0
+          GOK=0
+          Call ECR_TRACE(mess(662,197,1)-[F:PRH]PRHNUM-mess(22,105,1)-":"-mess(332,182,1)-[F:SOH]SOHNUM-":"-mess(129,197,1)-mess(167,191,1)-"\"-[F:SOQ]ITMREF-mess(184,197,1)-":"-format$(GFMD,[F:SOQ]
+& SHIDAT)-":"-mess(7,111,1),1) From GESECRAN
+          Break
+        Endif
+
+        #--2nd : starting from this point, only sales order having DME=3 are concerned
+        If [F:SOH]DME=3 and [F:PRE]ORINUM<>""
+          #--Has the couple {sale order;picking ticket} already been taken into account ?
+          WSIGMA=0 : WTEMPSIGMA=0
+          WTEMPSIGMA = sigma(0,[M:SWRK1]NBLIG-1,
+&     ([M:SWRK1]SOHNUM(indcum)=[F:PRE]ORINUM & [M:SWRK1]PRHNUM(indcum)=[F:PRE]PRHNUM)
+&    &( WSIGMA=0 and sigma(WSIGMA=1,1,1)))
+          If WTEMPSIGMA=0
+            #--If not, let's add it
+            [M:SWRK1]PRHNUM([M:SWRK1]NBLIG)=[F:PRE]PRHNUM
+            [M:SWRK1]SOHNUM([M:SWRK1]NBLIG)=[F:PRE]ORINUM
+            [M:SWRK1]SWDKEY([M:SWRK1]NBLIG)=[F:SWD]SWDKEY
+            [M:SWRK1]NBLIG+=1
+          Endif
+        Endif
+      Endif
+    Endif
+  Next
+  Filter [PRE]
+Endif
+
+If GOK=0
+  #--In this case, we have to reset the mask as before the For loop
+  If [M:SWRK1]NBLIG>WPREVIOUS_NBLIG
+    Dela WPREVIOUS_NBLIG,[M:SWRK1]NBLIG-WPREVIOUS_NBLIG, [M:SWRK1]NBLIG-1 [M:SWRK1]NBLIG
+  Endif
+  Goto AB_STD
+Endif
+# End issue 114391
+
+NBCDE += 1
+
+Commit
+
+Return
+
+######################################################################################
+$TRT_FIC
+Local Integer WFINFAC
+Local Char    SVGGREP # Issue 109784 - 2015-08-06 by CPO
+Local Integer LASTGOK                                                                     # 103163.new
+
+#Gbn-Fq79348
+# -------------------------------------------------------- #
+# Ouverture des masques livraison pour la valorisation TTC #
+# -------------------------------------------------------- #
+Local Mask SDH0 [SDH0] : Raz [M:SDH0]
+Local Mask SDH1 [SDH1] : Raz [M:SDH1]
+Local Mask SDH2 [SDH2] : Raz [M:SDH2]
+Local Mask SDH3 [SDH3] : Raz [M:SDH3]
+Local Mask SIHV [SIHV] : Raz [M:SIHV]
+
+#--> récup nb lignes factures autorisées par le code activité
+WSDHACV=0
+#If   !clalev([F:ACV]) : Local File ACTIV [ACV] : Endif   : # 85826
+Read [ACV] CODACT = "SIH"
+If   !fstat : WSDHACV = [F:ACV]DIME : Endif
+If   WSDHACV = 0
+#    -- paramêtre non renseigné
+     GOK = 0 : Call ECR_TRACE("SDH "+mess(8,176,1),1) From GESECRAN : Return
+Endif
+#Close Local File [ACV]  : # 85826
+
+# ACA (2009-12-08) Bug 60804 : Transfert des éléments de facturation via prépa (auto)
+Local Char SFIT_OBJ : SFIT_OBJ="SDH"
+#--CPO 106895
+#Gosub INIT_SFIT From SUBSFIT
+Local Char CPOSVGGREP(type(GREP)-10)
+CPOSVGGREP=GREP
+GREP="C"
+Gosub INIT_SFIT From SUBSFIT
+GREP=CPOSVGGREP
+#--/
+
+#--- Bug 22275 --- TS le 29.04.04 -------------------------
+# Pb de taille de clé suite aux corrections 19067 et 20251
+#----------------------------------------------------------
+
+If clalev([F:SOHX])=0 : Local File SORDER    [SOHX] : Endif # Issue 109797 - 2015-08-06 by CPO
+If clalev([F:SDHW])=0 : Local File SDELIVERY [SDHW] : Endif # Issue 109784 - 2015-08-06 by CPO
+
+#--- Issue 118769 for Implus
+#Filter [SWD] Where PRONUM=adxuid(1)
+#&            Order By Key SWD0
+Filter [SWD] Where PRONUM=adxuid(1)
+&            Order By Key ZSWD0=SWDKEY;SWDKEYD;SWDDATA2;SOHNUM
+#---End issue 118769 for Implus
+
+For [SWD]
+    # --------> fin bon prépa précédent  --------------------------
+    If   [F:SWD1]SOHNUM  <> ""
+      If GOK=1 & WNBPRE>0 & find([F:PRH]ORIPRH,1,2)
+        # Issue 109797 - 2015-08-06 by CPO : Commande non soldée si BL généré par la fonction FUNPREDLV
+        #--Le SOH_FIN doit être exécuté sur le [SOH]SOHNUM en ligne !!!
+        #--Il ne faut surtout pas lire celui de la nouvelle itération SWD
+        #--Le bug 103968 se produit à cause du rewrite sans lecture préalable
+        #--Il suffit de faire le Read = tout en ayant sauvegardé les cumuls avant cela et restaurer après
+        ## --------------------------------------
+        ## FGR 26/11/2014 : X3SUIVI103968 (début) : la commande a pu changer. La relire si nécessiare
+        #If instr(1, [F:SWD1]SWDDATA, "~") > 0 Then  # FGR 16/12/2014 : X3SUIVI104746
+        #  If left$([F:SWD1]SWDDATA, instr(1, [F:SWD1]SWDDATA, "~")-1) <> [F:SOH]SOHNUM Then
+        #    Read [SOH]SOH0=left$([F:SWD1]SWDDATA, instr(1, [F:SWD1]SWDDATA, "~")-1)
+        #  Endif
+        #Endif
+        ## FGR 26/11/2014 : X3SUIVI103968 (fin)
+        ## --------------------------------------
+        #--Il y a eu des mises à jour de champs ds SOH suite à l'ajout de BP's. On ne veut pas les perdre
+        Raz [F:SOHX] :#--If not just opened by the local file, we want it empty
+        [F:SOHX]=[F:SOH]
+        Read [SOH]= #--Needed, if not "rewrite" goes into error
+        [F:SOH]=[F:SOHX]
+        # End issue 109797
+        Gosub SOH_FIN
+        If GOK<1 : Goto NXTTRT : Endif
+      Endif
+    Endif
+
+    # --------> vérif nb lignes disponibles sur livraison pour 1 nouveau bon prépa
+    Gosub VERIF_LIN
+
+    # --------> changement bon prépa sur 1 même livraison -------------------
+    # Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+    #If   [F:SWD1]SWDKEY   = [F:SWD]SWDKEY
+    WTEMP_SWDKEY =[F:SWD]SWDKEY
+    WTEMP_SWDKEY1=[F:SWD1]SWDKEY
+    #--In order not to force the splitting/grouping on the same delivery, the new part of key has to be removed
+    #--CONST_LENGTH_NEWSEQ=5 (in $OUVRE)
+    If [F:SWD1]DMEFORPRH=3
+      WTEMP_SWDKEY1=left$([F:SWD1]SWDKEY,instr(len([F:SWD1]SWDKEY)-CONST_LENGTH_NEWSEQ,[F:SWD1]SWDKEY,"~"))
+    Endif
+    If [F:SWD]DMEFORPRH=3
+      WTEMP_SWDKEY=left$([F:SWD]SWDKEY,instr(len([F:SWD]SWDKEY)-CONST_LENGTH_NEWSEQ,[F:SWD]SWDKEY,"~"))
+    Endif
+    # End issue 114391
+
+    #--- Issue 118769 for IMPLUS
+#    If   [F:SWD1]SWDKEY   = [F:SWD]SWDKEY
+#&      & [F:SWD1]ODL<>2 & [F:SWD1]IME<>2 & [F:SWD1]IME<>3
+#&      & LINFLG = 1
+#&      & [F:SWD1]SOHNUM <> ""
+#&      & [F:SWD]SWDDATA2 = [F:SWD1]SWDDATA2
+#&      & [F:SWD]SWDKEYD  = [F:SWD1]SWDKEYD    : #--- Bug 70801
+    If   [F:SWD1]SWDKEY   = [F:SWD]SWDKEY
+&      & (([F:SWD1]ODL<>2 & [F:SWD1]IME<>2 & [F:SWD1]IME<>3)
+&       |(([F:SWD1]ODL=2 | [F:SWD1]IME=2 | [F:SWD1]IME=3) & (right$([F:SWD]SWDDATA2,3)<>"" & right$([F:SWD]SWDDATA2,3)=right$([F:SWD1]SWDDATA2,3))))
+&      & LINFLG = 1
+&      & [F:SWD1]SOHNUM <> ""
+&      & left$([F:SWD]SWDDATA2,1) = left$([F:SWD1]SWDDATA2,1)
+&      & [F:SWD]SWDKEYD  = [F:SWD1]SWDKEYD    : #--- Bug 70801
+    #--- End issue 118769 for IMPLUS
+
+        If GOK=1 & WSDHLIN>0
+           Gosub READ_PRH
+            If find([F:PRH]ORIPRH,1,2)
+               Gosub SOH_DEB
+            Endif
+           If GOK<1
+             Goto NXTTRT
+           Endif
+        Endif
+        Goto  DETAIL
+    Endif
+    # --------> fin livr. précédente / début suivante -----------------
+    If   [F:SWD1]SOHNUM <> ""
+      Call PJT_WRITE_MSG() From TRTPJT  # FGR 14/12/2011 : X3SUIVI71065
+      If GOK=1 & WSDHLIN>0
+        #-- Trace livraison
+        Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&              From GESECRAN
+         #Gosub SOH_FIN
+         LIVFLG = 0
+         COLFLG = 0    #réinit du flag de colisage
+         If GOK=1
+            # Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+            Gosub REWRITE_SDH
+            # End issue 109784
+            #If [M:PDL]CFMDLV=2            #X3-44435-JOBRO.o
+            If [M:PDL]CFMDLV=2 and GOK=1   #X3-44435-JOBRO.n
+             Gosub VALID_SDH
+            Endif
+            GOK=1                          #X3-44435-JOBRO.n
+         Endif
+      Endif
+    Endif
+
+    # Issue 109797 - 2015-08-06 by CPO : In case of an error, write the last created delivery
+    If [F:SWD1]SOHNUM = "" and LIVFLG=1 and WSDHLIN>0
+      Gosub REWRITE_SDH
+      #-- Trace livraison
+      Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&            From GESECRAN
+    Endif
+    # End issue 109797
+    # Ecriture de l'entête livraison
+    Raz WSDHLIN    #RAZ du nbre de lignes de la livraison
+    Raz LIVFLG     #Raz pour la première livraison
+    Raz [M:SDH1] #Gbn-Fq79348
+
+    #--- Issue 118769 for IMPLUS
+    #Case val([F:SWD]SWDDATA2)
+    Case val(left$([F:SWD]SWDDATA2,1))
+          When 1,2     : Gosub ALI_SOHSDH
+          When 3       : Gosub ALI_SSTSDH
+          When Default : Goto NXTTRT
+    Endcase
+
+    If    GOK<1 Goto NXTTRT Endif
+
+    # ACA (2009-12-08) Bug 60804 : Transfert des éléments de facturation via prépa (auto)
+    #--CPO 106895
+    #Call NEW_SFIT ( "F","SDH",[F:SDH]CUR,[F:SDH]BPCINV,[F:SDH]BPCORD,[F:SDH]DLVDAT ) From SUBSFIT
+    CPOSVGGREP=GREP
+    GREP="C"
+    Call NEW_SFIT ( "F","SDH",[F:SDH]CUR,[F:SDH]BPCINV,[F:SDH]BPCORD,[F:SDH]DLVDAT ) From SUBSFIT
+    GREP=CPOSVGGREP
+    #--/
+    Goto  DETAIL
+
+    If GOK<1
+         Goto NXTTRT
+    Endif
+
+    # --------> traitement du détail     ------------------------------
+    $DETAIL
+    If GOK=1
+        #--- Issue 104781
+        Call DEBTRANS From GLOCK
+        Trbegin [PRH]
+        #---
+        #--- Issue 108089 by TS
+        SYMBOLEPRH = "PRH"+[F:SWD]SOHNUM
+        Lock = SYMBOLEPRH With lockwait=0
+        If fstat=1
+          # Modification en cours sur un autre poste
+          Call ECR_TRACE("          "+[F:SWD]SOHNUM-mess(10,100,1),1) From GESECRAN
+          GOK=0
+          # Issue 109784 - 2015-08-06 by CPO : During testing : rollback needed given the trbegin just before
+          If adxlog<>0
+            Rollback
+          Endif
+          # End issue 109784
+          Goto NXTTRT
+        Endif
+        #---
+        Gosub LIV_PREPA
+        If LIVFLG = 0 & GOK = 1
+          Gosub ECR_SDH
+        Endif
+        #--- Issue 104781
+        If GOK=1 Commit Endif
+
+       If GOK<1 | [F:SDD]QTYSTU=0
+          # Issue 109784 - 2015-08-06 by CPO : During testing : rollback needed given the trbegin just before
+          If adxlog<>0
+            Rollback
+          Endif
+          # End issue 109784
+          Goto NXTTRT
+       Endif
+       [F:SWD1]=[F:SWD]
+    Endif
+#---------------
+$NXTTRT
+#--- Issue 108089 by TS
+Unlock = SYMBOLEPRH
+
+LASTGOK = GOK                                                                             # 103163.new
+If GOK<1
+    Raz [F:SWD1]
+    GOK = 1
+    # Issue 111425 - 2015-11-16 by CPO : Livraison commandes complètes
+    If find(([F:SWD]SWDDATA2),"1","2")>0
+      Unlock = SYMBOLESOH
+    Endif
+    # End issue 111425
+Endif
+Next
+
+Local Shortint WSOH_SAVED : WSOH_SAVED=0 # Issue 109797 - 2015-08-06 by CPO
+
+# Issue 109797 - 2015-08-06 by CPO : In case of an error, write the last created delivery
+If LASTGOK<1 and LIVFLG=1 and WSDHLIN>0 #--(cas d'une seule livraison, dont le dernier bon à ajouter est locké)
+  Gosub REWRITE_SDH
+  #-- Trace livraison
+  Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&        From GESECRAN
+Endif
+# End issue 109797
+
+#If GOK = 1                                                                               # 103163.old
+If LASTGOK = 1                                                                            # 103163.new
+   If WSDHLIN>0
+      If WNBPRE>0 & find([F:PRH]ORIPRH,1,2)
+         # Issue 109797 - 2015-08-06 by CPO : Commande non soldée si BL généré par la fonction FUNPREDLV
+         #--Le problème est situé plus en amont (LIV_PREPA)
+         #--corrigé ds LIV_PREPA, mais besoin de relire car rewrite
+         If [F:SOH]SOHNUM=[F:PRE]ORINUM
+           #--Il y a eu des mises à jour de champs ds SOH suite à l'ajout de BP's. On ne veut pas les perdre
+           Raz [F:SOHX] :#--If not just opened by the local file, we want it empty
+           [F:SOHX]=[F:SOH]
+           WSOH_SAVED=1
+         Endif
+         # End issue 109797
+         #--- Issue 105860
+         # Lecture entête commande
+         Read [SOH]SOH0 = [F:PRE]ORINUM
+         #---
+         # Issue 109797 - 2015-08-06 by CPO
+         If WSOH_SAVED=1
+           [F:SOH]=[F:SOHX]
+           WSOH_SAVED=0
+         Endif
+         # End issue 109797
+         Gosub SOH_FIN
+         If GOK<1                  : Return : Endif
+      Endif
+      # Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+      Gosub REWRITE_SDH
+      # End issue 109784
+  #   If [M:PDL]CFMDLV=2            #X3-44435 - REWRITE_SDH can set GOK to 0
+      If [M:PDL]CFMDLV=2 and GOK=1  #X3-44435 - JOBRO
+       Gosub VALID_SDH
+      Endif
+      # Trace livraison
+      Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&              From GESECRAN
+   Else
+    If adxlog<>0
+       Commit
+    Endif
+   Endif
+Endif
+
+Return
+
+#-----------------------------------------------------------------------#
+# Verification lignes disponibles pour nouveau bon de prépa             #
+#-----------------------------------------------------------------------#
+$VERIF_LIN
+# Calcul du nb de ligne du bon de prépa
+WLIGNE = 0
+LINFLG = 1
+If !clalev([F:SWD2]) : Local File SWRKDLV [SWD2] : Endif
+For [SWD2]SWD0 Where PRONUM  = adxuid(1)
+&                 & SWDKEY   = [F:SWD]SWDKEY
+&                 & SOHNUM   = [F:SWD]SOHNUM
+
+    WLIGNE += 1
+Next
+
+# Contrôle lignes dispo. pour nouvelle cde
+If WLIGNE > WSDHACV - WSDHLIN
+   LINFLG = 0
+Endif
+Return
+
+######################################################################################
+$ROL_CHGFIC
+Rollback
+Call ROLL From GLOCK
+If GROLL
+   Call ECR_TRACE(mess(17,107,1),1)From GESECRAN
+Else
+   Goto CHGFIC
+Endif
+Return
+
+######################################################################################
+#-----------------------------------------------------------------------#
+# Effacement fichier de travail si interruption                         #
+#-----------------------------------------------------------------------#
+$DEL_SWD
+
+Call DEBTRANS From GLOCK
+Trbegin [SWD]
+
+GOK = 1
+Delete [SWD] Where PRONUM=adxuid(1)
+If fstat
+   GOK= 0 : Call RSTA("SWD",num$(adxuid(1))) From GLOCK : Goto AB_STD
+Endif
+
+Commit
+Return
+
+######################################################################################
+#-----------------------------------------------------------------------#
+# lecture entête bon de préparation                                     #
+#-----------------------------------------------------------------------#
+$READ_PRH
+  #lecture du bon de prépa
+  Read [PRH]PRH0 = [F:SWD]SOHNUM    #on a utilisé SOHNUM ppour stocker le num du BP
+
+  #lecture de la première ligne du bon de prépa
+  Read [PRE]PRE0 = [F:PRH]PRHNUM; 1
+  # FGR 16/01/2013 : X3SUIVI95790 (début) : La première ligne n'a pas obligatoirement le numéro 1 !
+  If fstat Then
+    Raz [F:PRE]
+    Filter [PRE] Where [F:PRE]PRHNUM = [F:PRH]PRHNUM
+    Read [PRE]PRE0 First
+    Filter [PRE]
+  Endif
+  # FGR 16/01/2013 : X3SUIVI95790 (fin)
+Return
+
+######################################################################################
+
+######################################################################################
+######################################################################################
+## Etiquette ajoutée par le superviseur (écran PREDLV) 11/09/2012 15:06:45 (JDE)
+######################################################################################
+Subprog IB_SDHTYPNOR
+End
+
+
+######################################################################################
+######################################################################################
+## Section automatically added (screen PREDLV) 07/03/2014 16:54:23 (RICAR)
+######################################################################################
+Subprog AM_ENA(VALEUR)
+Variable Integer VALEUR
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+Local File     FACILITY [FCY]
+
+If VALEUR = 1
+  Raz   [M:PDL]STRDAYS,ENDDAYS,STRHOU,ENDHOU
+  Diszo [M:PDL]STRDAYS,ENDDAYS,STRHOU,ENDHOU
+  Effzo [M:PDL]STRDAYS,ENDDAYS,STRHOU,ENDHOU
+Else
+  If [M:PDL]CFMDLV = 2
+    Actzo [M:PDL]STRDAYS,ENDDAYS,STRHOU,ENDHOU
+    Read [FCY]FCY0=[M:PDL]STOFCY
+    If !fstat
+      [M:PDL]STRHOU = [F:FCY]STRHOU
+      [M:PDL]ENDHOU = [F:FCY]ENDHOU
+      Affzo [M:PDL]STRHOU,ENDHOU
+      Close File [FCY]
+    Endif
+  Else
+    Call ERREUR(mess(97,7711,1)) From GESECRAN
+    mkstat=1
+  Endif
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog D_STRDAYS(VALEUR)
+Variable Decimal VALEUR
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If [M:PDL]ENA<>2
+   Diszo [M:PDL]STRDAYS
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog C_STRDAYS(VALEUR)
+Variable Decimal VALEUR
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If VALEUR<0
+  Call ERREUR(mess(100,7711,1)) From GESECRAN
+  mkstat=2
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog D_ENDDAYS(VALEUR)
+Variable Decimal VALEUR
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If [M:PDL]ENA<>2
+   Diszo [M:PDL]ENDDAYS
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog C_ENDDAYS(VALEUR)
+Variable Decimal VALEUR
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If VALEUR<0
+  Call ERREUR(mess(100,7711,1)) From GESECRAN
+  mkstat=2
+Elsif VALEUR<[M:PDL]STRDAYS
+  Call ERREUR(mess(99,7711,1)) From GESECRAN
+  mkstat=2
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog D_STRHOU(VALEUR)
+Variable Char    VALEUR()
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If [M:PDL]ENA<>2
+   Diszo [M:PDL]STRHOU
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog C_STRHOU(VALEUR)
+Variable Char    VALEUR()
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+Local Shortint LOK
+Local Char     LHOUR
+Local Char     LHOURINT : [L]LHOURINT = VALEUR
+
+If [M:PDL]ENA=2
+  If VALEUR<>''
+      Call CTRL_HOU([L]LHOURINT,[L]LHOUR,[L]LOK) From PORLEGLIB
+      If [L]LOK=1
+        mkstat = 2
+      Else
+         VALEUR       = [L]LHOUR
+      Endif
+  Else
+      Call ERREUR(mess(94,7711,1)) From GESECRAN
+      mkstat = 2
+   Endif
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog D_ENDHOU(VALEUR)
+Variable Char    VALEUR()
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+If [M:PDL]ENA<>2
+   Diszo [M:PDL]ENDHOU
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+Subprog C_ENDHOU(VALEUR)
+Variable Char    VALEUR()
+
+#93745 RICAR 2014/07/03 - Transportation notes - BEGIN
+Local Shortint LOK
+Local Char     LHOUR
+Local Char     LHOURINT : [L]LHOURINT = VALEUR
+
+Local File     FACILITY [FCY]
+
+If [M:PDL]ENA=2
+  If VALEUR<>''
+      Call CTRL_HOU([L]LHOURINT,[L]LHOUR,[L]LOK) From PORLEGLIB
+      If [L]LOK=1
+        mkstat  = 2
+      Else
+         VALEUR = [L]LHOUR
+      Endif
+  Else
+      Read [FCY]FCY0=[M:PDL]STOFCY
+      If !fstat
+        [M:PDL]ENDHOU = [F:FCY]ENDHOU
+        Affzo [M:PDL]ENDHOU
+        If [M:PDL]ENDHOU = ''
+          Call ERREUR(mess(94,7711,1)) From GESECRAN
+          mkstat = 2
+        Endif
+        Close File [FCY]
+      Else
+        Call ERREUR(mess(94,7711,1)) From GESECRAN
+        mkstat = 2
+      Endif
+  Endif
+  If VALEUR<>''& VALEUR <> '0000' & VALEUR <> '00:00'
+    If [M:PDL]STRDAYS=[M:PDL]ENDDAYS & VALEUR<[M:PDL]STRHOU
+      Call ERREUR(mess(98,7711,1)) From GESECRAN
+      mkstat = 2
+    Endif
+  Endif
+Endif
+#93745 RICAR 2014/07/03 - Transportation notes - END
+
+End
+
+
+######################################################################################
+# Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+#--------------------------------------------------------------------------------------------------
+$REWRITE_SDH
+Local Integer WTRBEGIN_SDH
+
+If adxlog<>1
+  Trbegin [SDH]
+  [L]WTRBEGIN_SDH=1
+Endif
+
+# Recherche tarif transporteur
+If GFRENUM <> 0
+   Gosub RECH_TARIF_TRSP From TRTVENLIV
+Endif
+
+#----------------------------------------------------------------#
+# 104662 SST for Picking Tickets                                 #
+# Tax by document - before VALTTC call                           #
+#----------------------------------------------------------------#
+# If func AFNC.ACTIV("LTA") & GLOCUSATAX  # 106867.o
+If func AFNC.ACTIV("LTA") & [F:CPY]SSTTAXACT = 2  # 106867.n
+  GTAXBYDOC = 1
+Endif
+
+# --- Valorisation TTC (idem calcul facture)
+[M:SDH0] = [F:SDH] : [M:SDH1] = [F:SDH] : [M:SDH2] = [F:SDH] : [M:SDH3] = [F:SDH]
+Local Char WGREP : WGREP=GREP
+GREP="C"
+Global Integer G_CLCDSPLIN     : G_CLCDSPLIN    =1
+Global Integer G_PREV_DSPLIN   : G_PREV_DSPLIN  =1 # Issue 109784 - 2015-08-06 by CPO
+[F:SOH1]=[F:SOH] #Gbn-82291
+
+# 101874 : V9 : Taxe code control
+# Valuation is always done in this case
+GVALTTC=2
+#---- Paramètres complementaires contrôle des taxes
+# PARAM_T(0) : Flag contrôle des taxes             (1=Non/2=Oui)
+# PARAM_T(1) : Lecture de la trace par le sous-pro (1=Non avec msg/2=Oui avec msg/3=Non sans msg/4=Non sans msg)
+# PARAM_T(2) : Flag retour                         (1=KO/2=OK)
+Local    Char     PARAM_T (25) (0..10)
+PARAM_T(0)="2"      : # Contrôle des taxes lors de la création
+PARAM_T(1)="3"      : # Pas d'affichage du msg, pas de lecture de la trace
+PARAM_T(2)="0"
+Call VALTTC ("GESSDHF", PARAM_T) From TRTVENFACR
+#Call VALTTC ("GESSDHF") From TRTVENFACR
+If PARAM_T(2)="1" GOK=0 : Goto AB_STD Endif
+# 101874
+
+[F:SOH]=[F:SOH1] #Gbn-82291
+GREP=WGREP
+
+# Ré-Ecriture entête livraison
+#--Il y a eu des mises à jour de champs ds SDH suite à l'ajout de BP's. On ne veut pas les perdre
+Raz [F:SDHW] :#--If not just opened by the local file, we want it empty
+[F:SDHW]=[F:SDH]
+
+Read [SDH]= #--Needed, if not "rewrite" goes into error
+Local Integer RECORD_EXIST #108099.n MJH 09/03/2015
+RECORD_EXIST = fstat #108099.n MJH 09/03/2015
+
+# Maj sf si livraison intra-société
+#--Because the MAJMVC is done first in ECR_SDH, we'll have the decrease it and then add the actual DLVATI
+If !([F:SDH]BETFCY=2 & [F:SDH]BETCPY<=1)
+   # Maj mouvement client (en-cours livraison)
+   Call  MAJMVC ([F:SDH]BPCORD,[F:SDH]CUR,[F:SDH]CHGTYP,0,[F:SDH]SHIDAT,
+&                [F:SDH]SDHNUM,[F:SDH]SALFCY,0,[F:SDH]DLVATI,"-","O","",
+&                [F:SDH]LND) From TRTBPMVT
+   If GOK <= 0 Goto AB_STD Endif
+Endif
+[F:SDH]=[F:SDHW]
+
+#--Now the actual MAJMVC
+# Maj sf si livraison intra-société
+If !([F:SDH]BETFCY=2 & [F:SDH]BETCPY<=1)
+   # Maj mouvement client (en-cours livraison)
+   Call  MAJMVC ([F:SDH]BPCORD,[F:SDH]CUR,[F:SDH]CHGTYP,0,[F:SDH]SHIDAT,
+&                [F:SDH]SDHNUM,[F:SDH]SALFCY,0,[F:SDH]DLVATI,"+","O","",
+&                [F:SDH]LND) From TRTBPMVT
+   If GOK <= 0 Goto AB_STD Endif
+Endif
+
+# The previous read will let us now if the record exists in the table.
+# This allows us to determine if we need to write (new record) or rewrite (Existing record)
+If RECORD_EXIST
+  Write [SDH] #108099.n MJH 09/03/2015
+Else
+  Rewrite [SDH] #108099.o MJH 09/03/2015
+Endif
+
+If fstat
+   GOK=0: Call FSTA("SDH") From GLOCK: Goto AB_STD
+Else
+   LIVFLG = 1
+Endif
+
+# Issue 109784 - 2015-08-06 by CPO : Following 107712, Bad update in SDELIVERYD using FUNPREDLV
+Gosub SDD_UPD_DSPLIN
+If GOK < 1 Goto AB_STD Endif
+# End issue 109784
+
+#--CPO 84133 Pb de stockage valo dans SVCRVAT et SVCRFOOT
+#----------------------------------------------------------------#
+# Update des enregistrements dans SVCRVAT et SVCRFOOT            #
+#----------------------------------------------------------------#
+Call UPD_VALORISATION ("M","SDH") From TRTVENFACC
+If GOK < 1 Goto AB_STD Endif
+#--/CPO
+
+# Pour mettre à jour des tables annexes
+GPOINT="AUTDLVMAJ" : Gosub ENTREE From EXEFNC
+If GOK <= 0 Goto AB_STD Endif
+
+If [L]WTRBEGIN_SDH=1
+  Commit
+  [L]WTRBEGIN_SDH=0
+Endif
+
+# Issue 116439 - Move webservice calls to outside of the transaction
+If func AFNC.ACTIV("LTA") & [F:CPY]SSTTAXACT = 2 #108593.sn MJH 10/28/2015
+  Local Integer SSTERR
+  Local Char    SSTERRMSG(250)
+  Local Char    SDHNUM(20) : SDHNUM = [F:SDH]SDHNUM
+  If !clalev([F:TCU]) : Local File TABCUR [TCU] : Endif
+
+  Gosub CAL_FACTURE From TRTVENFACC
+  If SSTERR
+    Call ECR_TRACE(SSTERRMSG, 1) From GESECRAN
+    Goto WEBSERVICE_ERROR
+  Endif
+
+  Call UPD_VALORISATION ("M","SDH") From TRTVENFACC
+  If GOK < 1 : Goto WEBSERVICE_ERROR : Endif
+
+  Trbegin [SDH]
+  Readlock [SDH]SDH0 = [L]SDHNUM With lockwait=3
+  If fstat : Call FSTA("SDH") From GLOCK : Endif
+
+  # Update the shipment header totals
+  [F:SDH]DLVINVNOT  = [M:SIHV]INVNOT
+  [F:SDH]DLVINVATI  = [M:SIHV]INVATI
+  [F:SDH]DLVINVNOTL = [M:SIHV]INVNOTRPT
+  [F:SDH]DLVINVATIL = [M:SIHV]INVATIRPT
+
+  # Update the values back to the table
+  Rewrite [SDH]
+  If fstat
+    Call FSTA("SDH") From GLOCK
+    Rollback
+    SSTERR = 1
+    Goto WEBSERVICE_ERROR
+  Else
+    Commit
+  Endif
+
+  # Update the line level fields back to the table
+  Trbegin [SDD]
+
+  Local Integer I
+  For I=0 To [M:SDH1]NBLIG-1
+    Readlock [SDD]SDD0 = [L]SDHNUM;[M:SDH1]SDDLIN(I) With lockwait=3
+    If fstat : Call FSTA("SDD") From GLOCK : Endif
+
+    [F:SDD]NETPRIATI = [M:SDH1]NETPRIATI(I)
+    [F:SDD]NETPRINOT = [M:SDH1]NETPRINOT(I)
+
+    Rewrite [SDD]
+    If fstat
+      Call FSTA("SDD") From GLOCK
+      GOK=0
+      Break
+    Endif
+
+  Next
+
+  # If an error occurred, roll back, but dont hold up processing
+  If GOK=0
+    Rollback
+    SSTERR = 1
+    Goto WEBSERVICE_ERROR
+  Else
+    Commit
+  Endif
+
+  If !clalev([M:LTA1]) : Local Mask LTA1 [LTA1] : Endif
+  [M:SIHV]VCRTYP=2 : [M:SIHV]NUM=[L]SDHNUM
+  Gosub CREMOD_LTV From TRTTAXUSA
+
+Endif #108593.en
+
+#----------------------------------------------------------------#
+# 103163 Sage Exchange                                           #
+# Transfer SE records to new SDHNUM                              #
+#----------------------------------------------------------------#
+If func AFNC.ACTIV("SEPP") & func SEPPLIB.SEPP_DOC([F:SDH]PTE)
+  Local Integer SEERR, PAERR
+  Local Char    SEMESSAGE(250), PAMESSAGE(250)
+
+  Call TRANSFER(2,[F:SDH]SOHNUM,4,[F:SDH]SDHNUM,SEERR) From SEPPLIB
+
+  # Save the response - needed for Post Order auth
+  Call POST_AUTH(4,[F:SDH]SDHNUM,PAERR,PAMESSAGE) From SEPPLIB
+
+  If [L]SEERR | [L]PAERR : Goto WEBSERVICE_ERROR : Endif
+
+Endif
+# End issue 116439
+
+Return
+
+$WEBSERVICE_ERROR
+
+    # Issue 116439 An error occurred with either SE or SST.
+    # Since those calls are outside of the transaction, can't just do a rollback
+    # Have to delete the shipment here
+    Local Integer OK
+    Local Char PARAM2(10)(1), SAVREP(1), DELSDHNUM(20), WSMESS(255)
+    If !clalev([F:SDD1]) : Local File SDELIVERYD [SDD1] : Endif
+
+    SAVREP=GREP : GREP="A": DELSDHNUM = [F:SDH]SDHNUM
+    [L]OK=-9 : Raz [L]PARAM2 : # Don't ask for confirmation
+    Call ANUCOD("SDH",DELSDHNUM,PARAM2,OK) From GOBJACT
+    GREP=SAVREP
+    # did we come from SST or SE?
+    If dim([L]SSTERR)>0 & [L]SSTERR
+      WSMESS = func AFNC.MES2(mess(524,192,1),mess(25,159,1),DELSDHNUM)
+    Else
+      WSMESS = func AFNC.MES2(mess(59,2092,1),mess(25,159,1),DELSDHNUM)
+    Endif
+    Call ECR_TRACE(WSMESS, 1) From GESECRAN
+    GOK = 0 # X3-44435 - JOBRO - set GOK so it won't try to validate the deleted delivery
+Return
+
+#--------------------------------------------------------------------------------------------------
+$SDD_UPD_DSPLIN
+# Same as in 107712
+# Mise à jour de la Répartition des élements de facturation dans les tables des lignes
+Local Integer WTRBEGIN_SDD
+If G_VALSFL>0
+    If sum([M:SIHV]DDTANOT01(0..G_VALSFL-1),[M:SIHV]DDTANOT02(0..G_VALSFL-1),[M:SIHV]DDTANOT03(0..G_VALSFL-1))<>0 |
+&      sum([M:SIHV]DDTANOT04(0..G_VALSFL-1),[M:SIHV]DDTANOT05(0..G_VALSFL-1),[M:SIHV]DDTANOT06(0..G_VALSFL-1))<>0 |
+&      sum([M:SIHV]DDTANOT07(0..G_VALSFL-1),[M:SIHV]DDTANOT08(0..G_VALSFL-1),[M:SIHV]DDTANOT09(0..G_VALSFL-1))<>0
+        If adxlog<>1
+          Trbegin [SDD]
+          [L]WTRBEGIN_SDD=1
+        Endif
+        nolign=1
+        Filter [SDD] Where SDHNUM = [F:SDH]SDHNUM
+        For [SDD]SDD0
+            Readlock [SDD]SDD0 Curr
+            If    fstat=1 : GOK=-1 : GLOCK="$SDELIVERYD"+[F:SDD]SDHNUM+num$([F:SDD]SDDLIN) : Break
+            Elsif fstat   : GOK=0  : Call RSTA("SDD",[F:SDD]SDHNUM+num$([F:SDD]SDDLIN)) From GLOCK : Break
+            Endif
+            # --- Stockage a la ligne des elt de facturation
+            Call UPD_DSPLIN("SDD",nolign-1) From TRTVENFACC
+            Rewrite [SDD]
+            If fstat GOK=0 : Call FSTA("SDD") From GLOCK : Break : Endif
+            nolign+=1
+        Next
+        Filter [SDD]
+        If GOK<0 Goto ROL_TRT Endif
+        If GOK=0 Goto AB_STD Endif
+        If [L]WTRBEGIN_SDD=1
+          Commit
+          [L]WTRBEGIN_SDD=0
+        Endif
+    Endif
+Endif
+
+Return
+# End issue 109784
+#--------------------------------------------------------------------------------------------------
+# Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+#--DO NOT CHANGE unless you know what you're doing
+#-----------------------------------------------------------------------------
+Funprog FIND_GROUP(PSOHNUM,PIJCPO,PSWDKEY_SEQ)
+Value Char    PSHONUM
+Value Integer PIJCPO
+Value Integer PSWDKEY_SEQ
+
+Local Integer I,J,IJTEMP1,IJTEMP2,WTEMP,W
+
+Local Integer WRET : WRET = [V]CST_ANO
+
+If PIJCPO<0 or PIJCPO>[M:SWRK1]NBLIG-1 End WRET Endif
+
+For I=PIJCPO To [M:SWRK1]NBLIG-1
+  If [M:SWRK1]SOHNUM(I)<>PSOHNUM : Break : Endif #--already sorted
+
+  [M:SWRK1]SWDKEY_SEQ(I)=PSWDKEY_SEQ
+
+  #--Adding {SOHNUM,PRHNUM} into final working mask (if not in yet)
+  W=0 : WTEMP=0
+  WTEMP = sigma(0,[M:SWRK1F]NBLIG-1,
+&       ( [M:SWRK1F]SOHNUM(indcum)=[M:SWRK1]SOHNUM(I) & [M:SWRK1F]PRHNUM(indcum)=[M:SWRK1]PRHNUM(I))
+&      &( W=0 and sigma(W=1,1,1)) )
+  If WTEMP = 0
+    [M:SWRK1F]SOHNUM    ([M:SWRK1F]NBLIG)=[M:SWRK1]SOHNUM(I)
+    [M:SWRK1F]PRHNUM    ([M:SWRK1F]NBLIG)=[M:SWRK1]PRHNUM(I)
+    [M:SWRK1F]SWDKEY    ([M:SWRK1F]NBLIG)=[M:SWRK1]SWDKEY(I)
+    [M:SWRK1F]SWDKEY_SEQ([M:SWRK1F]NBLIG)=PSWDKEY_SEQ
+    [M:SWRK1F]NBLIG+=1
+  Endif
+
+  #--If full, we stop searching
+  If [M:SWRK1F]NBLIG>=[M:SWRK1]NBLIG End WRET Endif
+
+  IJTEMP1=0 : IJTEMP2=0
+  #--Finding picking ticket's index in the second working mask (having SWDKEY_SEQ=0)
+  #--Finding order's index in the first working mask (having SWDKEY_SEQ=0)
+  W=0
+  WTEMP = sigma(0,[M:SWRK1_]NBLIG-1,
+&              ( [M:SWRK1_]PRHNUM(indcum)=[M:SWRK1]PRHNUM(I) & [M:SWRK1_]SWDKEY_SEQ(indcum)=0)
+&             &( W=0 and sigma(W=1,1,1)) )
+  If WTEMP <> 0
+    While IJTEMP2<[M:SWRK1_]NBLIG#-1
+      IJTEMP1=find([M:SWRK1]PRHNUM(I),[M:SWRK1_]PRHNUM(IJTEMP2..[M:SWRK1_]NBLIG-1))
+      If IJTEMP1=0 : Break : Endif
+      If [M:SWRK1_]SWDKEY_SEQ(IJTEMP1+IJTEMP2-1)<>0
+        IJTEMP2=IJTEMP1+IJTEMP2 #--this because of the find(dimensionedvar(2..) that return 1 if found at pos 2 for example
+        IJTEMP1=0
+      Else
+        #--As index might have began from IJTEMP2_, we have to add
+        IJTEMP1+=IJTEMP2
+        Break
+      Endif
+    Wend
+  Endif
+  If IJTEMP1>0
+    #--Starting from the index just found, we mark all BP's attached orders with that sequence, while beeing
+    #--[M:SWRK1_] is sorted by PRHNUM,SOHNUM (as opposite to [M:SWRK1] wich is sorted by SOHNUM,PRHNUM
+    For J=IJTEMP1-1 To [M:SWRK1_]NBLIG-1
+      If [M:SWRK1_]PRHNUM(J)<>[M:SWRK1]PRHNUM(I) : Break : Endif #--already sorted
+
+      [M:SWRK1_]SWDKEY_SEQ(J)=PSWDKEY_SEQ
+      #--Other sales orders than the one given as parameter (done earlier)
+      If [M:SWRK1_]SOHNUM(J)<>PSOHNUM
+        W=0 : WTEMP=0
+        WTEMP = sigma(0,[M:SWRK1F]NBLIG-1,
+&                    ( [M:SWRK1F]SOHNUM(indcum)=[M:SWRK1_]SOHNUM(J) & [M:SWRK1F]PRHNUM(indcum)=[M:SWRK1_]PRHNUM(J))
+&                   &( W=0 and sigma(W=1,1,1)) )
+        If WTEMP = 0
+          [M:SWRK1F]SOHNUM    ([M:SWRK1F]NBLIG)=[M:SWRK1_]SOHNUM(J)
+          [M:SWRK1F]PRHNUM    ([M:SWRK1F]NBLIG)=[M:SWRK1_]PRHNUM(J)
+          [M:SWRK1F]SWDKEY    ([M:SWRK1F]NBLIG)=[M:SWRK1_]SWDKEY(J)
+          [M:SWRK1F]SWDKEY_SEQ([M:SWRK1F]NBLIG)=PSWDKEY_SEQ
+          [M:SWRK1F]NBLIG+=1
+        Endif
+        #--If full, we stop searching
+        If [M:SWRK1F]NBLIG>=[M:SWRK1]NBLIG End WRET Endif
+
+        #--Now, let's set the SWDKEY_SEQ number forcing the grouping on the same delivery
+        IJTEMP1_=0 : IJTEMP2_=0
+        #--Finding order's index in the first working mask (having SWDKEY_SEQ=0)
+        #--to mark eventually other BP attached to that order
+        W=0
+        WTEMP = sigma(0,[M:SWRK1]NBLIG-1,
+&                    ( [M:SWRK1]SOHNUM(indcum)=[M:SWRK1_]SOHNUM(J) & [M:SWRK1]SWDKEY_SEQ(indcum)=0)
+&                   &( W=0 and sigma(W=1,1,1)) )
+        If WTEMP <> 0
+          While IJTEMP2_<[M:SWRK1]NBLIG#-1
+            IJTEMP1_=find([M:SWRK1_]SOHNUM(J),[M:SWRK1]SOHNUM(IJTEMP2_..[M:SWRK1]NBLIG-1))
+            If IJTEMP1_=0 : Break : Endif
+            If [M:SWRK1]SWDKEY_SEQ(IJTEMP1_+IJTEMP2_-1)<>0
+              IJTEMP2_=IJTEMP1_+IJTEMP2_ #--this because of the find(dimensionedvar(2..) that return 1 if found at pos 2 for example
+              IJTEMP1_=0
+            Else
+              [M:SWRK1]SWDKEY_SEQ(IJTEMP1_+IJTEMP2_-1)=PSWDKEY_SEQ
+              #--As index might have began from IJTEMP2_, we have to add
+              IJTEMP2_+= 1
+              If IJTEMP2_>[M:SWRK1]NBLIG-1 : Break : Endif
+            Endif
+          Wend
+        Endif
+      Endif
+    Next
+  Endif
+Next
+
+End WRET
+# End issue 114391
+#--------------------------------------------------------------------------------------------------
+# Issue 114391   - 2016-02-19 by CPO : Picking tikets and complet order
+#--DO NOT CHANGE unless you know what you're doing
+#-----------------------------------------------------------------------------
+Funprog REWORK_SWD()
+
+Local Integer WRET : WRET=[V]CST_AOK
+Local Integer WTEMP,W,WSWDKEY_SEQUENCE,WISTODEL_FROMSWD
+Local Integer IJCPO,IJCPO1,IJCPO2
+Local Char    WRKSOHNUM(GLONVCR),WRKPRHNUM(GLONVCR),WRKSWDKEY(250)
+
+Local Integer CONST_LENGTH_NEWSEQ : CONST_LENGTH_NEWSEQ=5 #--Already defined in $OUVRE (if length changed here, also change $OUVRE)
+
+If clalev([M:SWRK1])=0 or [M:SWRK1]NBLIG=0 : End WRET : Endif
+
+#--For all entries into the [M:SWRK1] mask, if any
+#--A rework has to be done :
+#--1st : doing a check, for all orders present in the mask, that they are complete
+#--2nd : that all Picking tickets associated with an order from the mask, are present into the SWD working file
+#--3rd : if all is ok, the [F:SWD]SWDKEY is modified by adding to the end, an re-ordering value
+#--4th : if an order is not complete, than all picking tickets attached to this order are to be removed from SWD,
+#--      and in case those picking tickets are attached to other orders, those orders and the picking ticlets attached to are to be removed
+Raz [M:SWRK1F],[M:SWRK1_]
+
+If [M:SWRK1]NBLIG>0
+  Call DEBTRANS From GLOCK
+  Trbegin [SWD]
+  [M:SWRK1_]=[M:SWRK1]
+  #--The mask need to be sorted according to the order number, then by picking ticket number
+  Sorta [M:SWRK1]NBLIG [M:SWRK1]NBLIG Order By [M:SWRK1]SOHNUM(indice),[M:SWRK1]PRHNUM(indice)
+  #--The mask m:swrk1_ need to be sorted according to the picking ticket number, then by order number
+  Sorta [M:SWRK1_]NBLIG [M:SWRK1_]NBLIG Order By [M:SWRK1_]PRHNUM(indice),[M:SWRK1_]SOHNUM(indice)
+
+  WSWDKEY_SEQUENCE=0
+  Raz WRKSOHNUM,WRKPRHNUM
+
+  For IJCPO=0 To [M:SWRK1]NBLIG-1
+    WISTODEL_FROMSWD = [V]CST_ANO
+    #--1st : doing a check for all orders present in the mask : have to be closed for all lines
+    If WRKSOHNUM<>[M:SWRK1]SOHNUM(IJCPO)
+      Link [SOQ] With [SOH]SOH0=[F:SOQ]SOHNUM As [LNKSOQ] Where [F:SOQ]SOHNUM=[M:SWRK1]SOHNUM(IJCPO)
+&          and [F:SOQ]SOQSTA<>3 # Issue 117080 - 2016-06-15 by CPO : Error message in picking order delivery for closed lines
+      For [LNKSOQ]
+        If [F:SOH]DME<>3 : Break : Endif
+        If [F:SOQ]QTY-([F:SOQ]DLVQTY+[F:SOQ]PREQTY)>0
+          Call ECR_TRACE([F:SOH]SOHNUM-":"-mess(129,197,1)-mess(167,191,1)-"\"-[F:SOQ]ITMREF-mess(184,197,1)-":"-format$(GFMD,[F:SOQ]SHIDAT)-":"-mess(7,111,1),1) From GESECRAN
+          Call ECR_TRACE(mess(502,192,1),1) From GESECRAN
+          WISTODEL_FROMSWD=[V]CST_AYES
+          Break
+        Endif
+      Next
+      #--2nd : all Picking tickets associated with an order from the mask, have to be present in the SWD working file
+      Filter [PRE] Where ORINUM=[M:SWRK1]SOHNUM(IJCPO)
+      For [PRE]
+        #--Searching for picking tickets not taken into account (due for example of input criterias)
+        #--As the SWD entries might have been deleted in a previous step of the present loop,
+        #--I prefer searching into the SWRK1 mask (that normally have to contain all picking tickets of a DME=3 type order)
+#        Filter [SWD] Where SOHNUM=[PRE]PRHNUM
+#        Read [SWD] First
+#        If fstat
+        W=0
+        WTEMP = sigma(0,[M:SWRK1]NBLIG-1,
+&                    ( [M:SWRK1]PRHNUM(indcum)=[F:PRE]PRHNUM)
+&                   &( W=0 and sigma(W=1,1,1)) )
+        If WTEMP = 0
+          Call ECR_TRACE([M:SWRK1]SOHNUM(IJCPO)-"-"-mess(129,197,1)-mess(167,191,1)-"\"-mess(503,192,1)-"\"-mess(505,192,1),1) From GESECRAN
+          Call ECR_TRACE(mess(504,192,1),1) From GESECRAN
+          WISTODEL_FROMSWD=[V]CST_AYES
+          Break
+        Endif
+#        Filter [SWD]
+      Next
+
+      Filter [SWD]
+      Filter [PRE]
+      #--/2nd
+      WRKSOHNUM=[M:SWRK1]SOHNUM(IJCPO)
+    Endif
+    #--1st/
+
+    If WISTODEL_FROMSWD=[V]CST_AYES : [M:SWRK1]TODELFROMSWD(IJCPO)=[V]CST_AYES : Endif
+
+    #--As the deletion is done at the very end, we better have all information stored
+    #--3rd : if all is ok, the [F:SWD]SWDKEY is modified by adding to the end, an re-ordering value
+
+    #--Searching of the sequence number (if any) used for the present order number
+    IJCPO1=0 : IJCPO2=0
+    If IJCPO>0
+      #--Is there a previous sequence number assigned for this order number ?
+      IJCPO1=find([M:SWRK1]SOHNUM(IJCPO),[M:SWRK1F]SOHNUM(0..[M:SWRK1F]NBLIG-1))
+      #--If not, is there another order on the same picking ticket ?
+      If IJCPO1=0
+        IJCPO2=find([M:SWRK1]PRHNUM(IJCPO),[M:SWRK1F]PRHNUM(0..[M:SWRK1F]NBLIG-1))
+      Endif
+    Endif
+    If    IJCPO1>0
+      [M:SWRK1]SWDKEY_SEQ(IJCPO) = [M:SWRK1F]SWDKEY_SEQ(IJCPO1-1)
+    Elsif IJCPO2>0
+      [M:SWRK1]SWDKEY_SEQ(IJCPO) = [M:SWRK1F]SWDKEY_SEQ(IJCPO2-1)
+    Else
+      WSWDKEY_SEQUENCE += 1
+      [M:SWRK1]SWDKEY_SEQ(IJCPO) = WSWDKEY_SEQUENCE
+    Endif
+
+    WRET = func FIND_GROUP([M:SWRK1]SOHNUM(IJCPO),IJCPO,[M:SWRK1]SWDKEY_SEQ(IJCPO))
+
+    #--CONST_LENGTH_NEWSEQ=5 (in $OUVRE)
+    Readlock [F:SWD]SWD0=adxuid(1);[M:SWRK1]SWDKEY(IJCPO);[M:SWRK1]PRHNUM(IJCPO);0;0
+    If fstat>0
+      #--As the SWDKEY value might have been alterred by previous passage into the loop
+      #--we try to read by addind the seq to SWDKEY
+      #--If no record read, then the index ICPO entry has to be marked as to be deleted
+      WRKSWDKEY=[M:SWRK1]SWDKEY(IJCPO)+"~"+string$(CONST_LENGTH_NEWSEQ-len(num$([M:SWRK1]SWDKEY_SEQ(IJCPO))),"0")+num$([M:SWRK1]SWDKEY_SEQ(IJCPO))
+      Readlock [F:SWD]SWD0=adxuid(1);WRKSWDKEY;[M:SWRK1]PRHNUM(IJCPO);0;0
+      If fstat>0
+        [M:SWRK1]TODELFROMSWD(IJCPO)=[V]CST_AYES
+      Endif
+    Else
+      [F:SWD]SWDKEY+="~"+string$(CONST_LENGTH_NEWSEQ-len(num$([M:SWRK1]SWDKEY_SEQ(IJCPO))),"0")+num$([M:SWRK1]SWDKEY_SEQ(IJCPO))
+      [F:SWD]DMEFORPRH=3
+      Rewrite [F:SWD]
+      If fstat>0
+        Call FSTA("SWD") From GLOCK
+        GOK=0
+        Break
+      Endif
+    Endif
+  Next
+
+  #--4th : if an order is not complete, than all picking tickets attached to this order are to be removed from SWD,
+  #--      and in case those picking tickets are attached to other orders, those orders and the picking ticlets attached to are to be removed
+  #--Very important for what's comming next
+  Sorta [M:SWRK1F]NBLIG [M:SWRK1F]NBLIG Order By [M:SWRK1F]SWDKEY_SEQ(indice),[M:SWRK1F]PRHNUM(indice),[M:SWRK1F]SOHNUM(indice)
+
+  #--Now, all entries marked as to be deleted, are deleted both from SWD table and SWRK1F mask
+  #--The principle is to delete all entries having the same sequence added (that implies a manadatory grouping on the same delivery)
+  If find([V]CST_AYES,[M:SWRK1]TODELFROMSWD(0..[M:SWRK1]NBLIG-1))>0
+    WISTODEL_FROMSWD=[V]CST_AYES
+    While WISTODEL_FROMSWD=[V]CST_AYES
+      IJCPO=find([V]CST_AYES,[M:SWRK1]TODELFROMSWD(0..[M:SWRK1]NBLIG-1))
+      If IJCPO>0
+        #--Delete from SWD all picking tickets comming from the same order as the present one, including the present
+        #--This is done by using the relations found into the SWRK1 mask...
+        IJCPO1=find([M:SWRK1]PRHNUM(IJCPO-1),[M:SWRK1F]PRHNUM(0..[M:SWRK1F]NBLIG-1))
+        If IJCPO1>0
+          #--Now, let's see the SWDKEY_SEQ : a same value of this sequence implies all documents are to be delivered once
+          #--So, we have to delete all of those from SWD working file...
+          WSWDKEY_SEQUENCE = [M:SWRK1F]SWDKEY_SEQ(IJCPO1-1)
+          For IJCPO1=0 To [M:SWRK1F]NBLIG-1
+            If [M:SWRK1F]SWDKEY_SEQ(IJCPO1)=WSWDKEY_SEQUENCE
+              Delete [SWD]SWD1=adxuid(1);[M:SWRK1F]PRHNUM(IJCPO1)
+              If fstat>0 : GOK=0 : Break Endif
+            Endif
+          Next
+        Endif
+        If GOK=0 : Break : Endif
+        #--Also, delete lines from SWRK1F concerning the present picking ticket (and all others associated to the order)
+        #--in fact, we have to delete all lines having the same SWDKEY_SEQ number as the one of the order/picking ticket
+        #--step 1 : finding the SWDKEY_SEQ number (done earlier => set in WSWDKEY_SEQUENCE)
+        #--IJCPO1 : starting line / IJCPO2 : endind line to be deleted
+        IJCPO1=find(WSWDKEY_SEQUENCE,[M:SWRK1F]SWDKEY_SEQ(0..[M:SWRK1F]NBLIG-1))
+        IJCPO2=0 #--here IJCPO2 is the number of line to be deleted
+        If IJCPO1>0
+          IJCPO2_=IJCPO1
+          While IJCPO2_>0 and IJCPO2_<=[M:SWRK1F]NBLIG
+            If [M:SWRK1F]SWDKEY_SEQ(IJCPO2_-1)=WSWDKEY_SEQUENCE
+              IJCPO2+=1 : IJCPO2_+=1
+            Else
+              Break
+            Endif
+          Wend
+          #--step 2 : deleting all lines having this SWDKEY_SEQ
+          #--Just a small precaution...
+          If IJCPO2>[M:SWRK1F]NBLIG : IJCPO2=[M:SWRK1F]NBLIG : Endif
+          If IJCPO2>0
+            Dela IJCPO1-1,IJCPO2, [M:SWRK1F]NBLIG-1 [M:SWRK1F]NBLIG #[M:SWRK1F]PRHNUM,[M:SWRK1F]SOHNUM,[M:SWRK1F]SWDKEY,[M:SWRK1F]SWDKEY_SEQ,[M:SWRK1F]TODELFROMSWD
+            [M:SWRK1F]NBLIG-=IJCPO2
+          Endif
+        Endif
+        #--step 3 : Finally, don't forget to set the flag [M:SWRK1]TODELFROMSWD to [V]cst_ano,
+        #--if not, we're good for an infinite loop...
+        [M:SWRK1]TODELFROMSWD(IJCPO-1)=[V]CST_ANO
+      Else
+        WISTODEL_FROMSWD=[V]CST_ANO
+        Break
+      Endif
+    Wend
+  Endif
+  #--/4th
+  If GOK>0
+    Commit
+  Else
+    Rollback
+  Endif
+Endif
+
+End WRET
+
+######################################################################################
+
+#--- Issue 118769 for IMPLUS
+$TRT_FIC2
+Local Integer WFINFAC, WERR_PARTIEL
+Local Char    WMESS1 (150)
+Local Integer WRET
+Local Char    SVGGREP
+Local Integer LASTGOK
+
+# -------------------------------------------------------- #
+# Ouverture des masques livraison pour la valorisation TTC #
+# -------------------------------------------------------- #
+Local Mask SDH0 [SDH0] : Raz [M:SDH0]
+Local Mask SDH1 [SDH1] : Raz [M:SDH1]
+Local Mask SDH2 [SDH2] : Raz [M:SDH2]
+Local Mask SDH3 [SDH3] : Raz [M:SDH3]
+Local Mask SIHV [SIHV] : Raz [M:SIHV]
+
+#--> récup nb lignes factures autorisées par le code activité
+WSDHACV=0
+
+Read [ACV] CODACT = "SIH"
+If   !fstat : WSDHACV = [F:ACV]DIME : Endif
+If   WSDHACV = 0
+#    -- paramêtre non renseigné
+     GOK = 0 : Call ECR_TRACE("SDH "+mess(8,176,1),1) From GESECRAN : Return
+Endif
+
+Local Char SFIT_OBJ : SFIT_OBJ="SDH"
+
+Local Char CPOSVGGREP(type(GREP)-10)
+CPOSVGGREP=GREP
+GREP="C"
+Gosub INIT_SFIT From SUBSFIT
+GREP=CPOSVGGREP
+
+If clalev([F:SOHX])=0 : Local File SORDER    [SOHX] : Endif
+If clalev([F:SDHW])=0 : Local File SDELIVERY [SDHW] : Endif
+
+Local Char    LAST_SOHNUM(GLONVCR), LAST_SWDKEY(250), LAST_SWDDATA2(250), WTEMP_SWDKEY(250), WTEMP_SWDKEY1(250)
+Local Integer LAST_ODL, LAST_IME, LAST_SWDKEYD, LAST_DMEFORPRH
+LASTGOK=1
+
+Filter [SWD] Where PRONUM=adxuid(1)
+&            Order By Key ZSWD0=SWDKEY;SWDKEYD;SWDDATA2;SOHNUM
+For [SWD]ZSWD0
+    If LASTGOK<1
+      WTEMP_SWDKEY  = [F:SWD]SWDKEY
+      WTEMP_SWDKEY1 = LAST_SWDKEY
+      If LAST_DMEFORPRH=3
+        WTEMP_SWDKEY1=left$(LAST_SWDKEY,instr(len(LAST_SWDKEY)-CONST_LENGTH_NEWSEQ,LAST_SWDKEY,"~"))
+      Endif
+      If [F:SWD]DMEFORPRH=3
+        WTEMP_SWDKEY=left$([F:SWD]SWDKEY,instr(len([F:SWD]SWDKEY)-CONST_LENGTH_NEWSEQ,[F:SWD]SWDKEY,"~"))
+      Endif
+
+      #--If an error occured on a Picking ticket from the same order, the followinig are not to be delivered
+      If   WTEMP_SWDKEY   = WTEMP_SWDKEY1
+&      & ((LAST_ODL=2 | LAST_IME=2 | LAST_IME=3) & (right$([F:SWD]SWDDATA2,3)<>"" & right$([F:SWD]SWDDATA2,3)=right$(LAST_SWDDATA2,3)))
+&      & LAST_SOHNUM <> ""
+&      & left$([F:SWD]SWDDATA2,1) = left$(LAST_SWDDATA2,1)
+&      & [F:SWD]SWDKEYD  = LAST_SWDKEYD
+        Goto NXTSTW
+      Else
+        Raz LAST_SOHNUM, LAST_SWDKEY, LAST_SWDDATA2
+        Raz LAST_ODL, LAST_IME, LAST_SWDKEYD, LAST_DMEFORPRH
+      Endif
+    Endif
+    # --------> fin bon prépa précédent  --------------------------
+    If   [F:SWD1]SOHNUM  <> ""
+      If GOK=1 & WNBPRE>0 & find([F:PRH]ORIPRH,1,2)
+        #--Le SOH_FIN doit être exécuté sur le [SOH]SOHNUM en ligne !!!
+        #--Il ne faut surtout pas lire celui de la nouvelle itération SWD
+        #--Le bug 103968 se produit à cause du rewrite sans lecture préalable
+        #--Il suffit de faire le Read = tout en ayant sauvegardé les cumuls avant cela et restaurer après
+        #--Il y a eu des mises à jour de champs ds SOH suite à l'ajout de BP's. On ne veut pas les perdre
+        Raz [F:SOHX] :#--If not just opened by the local file, we want it empty
+        [F:SOHX]=[F:SOH]
+        Read [SOH]= #--Needed, if not "rewrite" goes into error
+        [F:SOH]=[F:SOHX]
+
+        Gosub SOH_FIN
+        If GOK<1 : Goto NXTTRT2 : Endif
+      Endif
+    Endif
+
+    # --------> vérif nb lignes disponibles sur livraison pour 1 nouveau bon prépa
+    Gosub VERIF_LIN
+
+    # --------> changement bon prépa sur 1 même livraison -------------------
+
+    #--In order not to force the splitting/grouping on the same delivery, the new part of key has to be removed
+    #--CONST_LENGTH_NEWSEQ=5 (in $OUVRE)
+    WTEMP_SWDKEY =[F:SWD]SWDKEY
+    WTEMP_SWDKEY1=[F:SWD1]SWDKEY
+    If [F:SWD1]DMEFORPRH=3
+      WTEMP_SWDKEY1=left$([F:SWD1]SWDKEY,instr(len([F:SWD1]SWDKEY)-CONST_LENGTH_NEWSEQ,[F:SWD1]SWDKEY,"~"))
+    Endif
+    If [F:SWD]DMEFORPRH=3
+      WTEMP_SWDKEY=left$([F:SWD]SWDKEY,instr(len([F:SWD]SWDKEY)-CONST_LENGTH_NEWSEQ,[F:SWD]SWDKEY,"~"))
+    Endif
+
+    If   WTEMP_SWDKEY   = WTEMP_SWDKEY1
+&      & (([F:SWD1]ODL<>2 & [F:SWD1]IME<>2 & [F:SWD1]IME<>3)
+&       |(([F:SWD1]ODL=2 | [F:SWD1]IME=2 | [F:SWD1]IME=3) & (right$([F:SWD]SWDDATA2,3)<>"" & right$([F:SWD]SWDDATA2,3)=right$([F:SWD1]SWDDATA2,3))))
+&      & LINFLG = 1
+&      & [F:SWD1]SOHNUM <> ""
+&      & left$([F:SWD]SWDDATA2,1) = left$([F:SWD1]SWDDATA2,1)
+&      & [F:SWD]SWDKEYD  = [F:SWD1]SWDKEYD
+
+      If GOK=1
+        If WSDHLIN>0
+           Gosub READ_PRH
+            If find([F:PRH]ORIPRH,1,2)
+               Gosub SOH_DEB
+            Endif
+           If GOK<1
+             Goto NXTTRT2
+           Endif
+        Endif
+        Goto  DETAIL2
+      Else
+        Goto NXTSTW
+      Endif
+    Endif
+
+    # --------> fin livr. précédente / début suivante -----------------
+    If   [F:SWD1]SOHNUM <> ""
+      If GOK=1 & WSDHLIN>0
+        #-- Trace livraison
+        If LIVFLG = 0 & GOK = 1
+          Gosub ECR_SDH
+          If GOK>0
+            Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&                  From GESECRAN
+          Endif
+          If adxlog<>0
+            If GOK>0
+              Commit
+            Else
+              Rollback
+            Endif
+          Endif
+        Endif
+        LIVFLG = 0
+        COLFLG = 0    #réinit du flag de colisage
+        If GOK>0
+          If [M:PDL]CFMDLV=2
+           Gosub VALID_SDH
+          Endif
+        Endif
+        #----
+      Endif
+    Endif
+
+    Call DEBTRANS From GLOCK
+    Trbegin [SDH]
+
+    # Ecriture de l'entête livraison
+    Raz WSDHLIN    #RAZ du nbre de lignes de la livraison
+    Raz LIVFLG     #Raz pour la première livraison
+    Raz [M:SDH1]
+    Raz [F:SDH], [F:SDD]
+
+    Case val(left$([F:SWD]SWDDATA2,1))
+          When 1,2     : Gosub ALI_SOHSDH
+          When 3       : Gosub ALI_SSTSDH
+          When Default : Goto NXTTRT2
+    Endcase
+
+    If    GOK<1 Goto NXTTRT2 Endif
+
+    CPOSVGGREP=GREP
+    GREP="C"
+    Call NEW_SFIT ( "F","SDH",[F:SDH]CUR,[F:SDH]BPCINV,[F:SDH]BPCORD,[F:SDH]DLVDAT ) From SUBSFIT
+    GREP=CPOSVGGREP
+
+    Goto  DETAIL2
+
+    If GOK<1
+         Goto NXTTRT2
+    Endif
+
+    # --------> traitement du détail     ------------------------------
+    $DETAIL2
+    If GOK=1
+      SYMBOLEPRH = "PRH"+[F:SWD]SOHNUM
+      Lock = SYMBOLEPRH With lockwait=0
+      If fstat=1
+        # Modification en cours sur un autre poste
+        Call ECR_TRACE("          "+[F:SWD]SOHNUM-mess(10,100,1),1) From GESECRAN
+        GOK=0
+        #--rollback needed given the trbegin just before
+        If adxlog<>0
+          Rollback
+        Endif
+        Goto NXTTRT2
+      Endif
+      #---
+      Gosub LIV_PREPA
+
+      If GOK<1 | [F:SDD]QTYSTU=0
+        Goto NXTTRT2
+      Endif
+      [F:SWD1]=[F:SWD]
+    Endif
+
+#---------------
+$NXTTRT2
+  Unlock = SYMBOLEPRH
+
+  LASTGOK = GOK
+  If GOK<1
+      #--
+      LAST_SWDDATA2  = [F:SWD]SWDDATA2
+      LAST_SWDKEY    = [F:SWD]SWDKEY
+      LAST_SWDKEYD   = [F:SWD]SWDKEYD
+      LAST_SOHNUM    = [F:SWD]SOHNUM
+      LAST_ODL       = [F:SWD]ODL
+      LAST_IME       = [F:SWD]IME
+      LAST_DMEFORPRH = [F:SWD]DMEFORPRH
+      #--
+      Raz [F:SWD1]
+      GOK = 1
+
+      If find(left$([F:SWD]SWDDATA2,1),"1","2")>0
+        Unlock = SYMBOLESOH
+      Endif
+  Endif
+$NXTSTW
+Next
+
+Local Shortint WSOH_SAVED : WSOH_SAVED=0
+
+If LASTGOK = 1
+   If WSDHLIN>0
+      If WNBPRE>0 & find([F:PRH]ORIPRH,1,2)
+         If [F:SOH]SOHNUM=[F:PRE]ORINUM
+           #--Il y a eu des mises à jour de champs ds SOH suite à l'ajout de BP's. On ne veut pas les perdre
+           Raz [F:SOHX] :#--If not just opened by the local file, we want it empty
+           [F:SOHX]=[F:SOH]
+           WSOH_SAVED=1
+         Endif
+         # Lecture entête commande
+         Read [SOH]SOH0 = [F:PRE]ORINUM
+         #---
+         If WSOH_SAVED=1
+           [F:SOH]=[F:SOHX]
+           WSOH_SAVED=0
+         Endif
+
+         Gosub SOH_FIN
+
+         If GOK<1
+           If adxlog<>0
+             Rollback
+           Endif
+           Return
+         Endif
+      Endif
+
+      If LIVFLG=0
+        Gosub ECR_SDH
+      Endif
+      If GOK>0
+        If adxlog<>0
+          Commit
+        Endif
+
+        If [M:PDL]CFMDLV=2
+          Gosub VALID_SDH
+        Endif
+        # Trace livraison
+        Call ECR_TRACE(mess(116,197,1)-":"-[F:SDH]SDHNUM-mess(42,191,1)-":"-[F:SDH]BPCORD-[F:SDH]BPAADD-WBPDNAM,0)
+&              From GESECRAN
+      Else
+        If adxlog<>0
+          Rollback
+        Endif
+        Return
+      Endif
+   Else
+    If adxlog<>0
+       Commit
+    Endif
+   Endif
+Endif
+
+Return
+#--- End issue 118769 for Implus
+
+######################################################################################
+

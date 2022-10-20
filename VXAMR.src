@@ -1,0 +1,426 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)0.0.0.0 $Revision$
+####################################################################################
+# Program Name: VXAMR
+# Description : ADC Miscellaneous Receipts
+# Author      : Chris Deutschbauer
+# Date        : February 6th, 2006
+####################################################################################
+
+Local Char PARAM(10)(1..2) , VALEUR(10)
+
+Call SAISIE_CHAR(VALEUR,PARAM,"VXAMR","VXAMR","XWVXAMR") From GSAISIE
+
+End
+
+########################################################
+# Miscellaneous Receipt
+########################################################
+#
+# Necessary field in the VT Screen
+# --------------------------------
+# STOFCY, ITMREF, PCU, QTYPCU, STU , QTYSTU, PCUSTUCOE
+# STA, LOC, LOCTYP, LOT, SLO, SLOF, BPSLOT, GESLOT
+# PALNUM, CTRNUM, SERNUM, SERNUMF, TCLCOD
+# WSTOSEQ, WLOCSEQ
+#
+# Necessary value in Entry transaction
+# ------------------------------------
+# Field 'Auto print'     --> No
+# Field 'Form'           --> No auto print
+# Block 'Lot': all field --> No
+#
+# XAMR is the VT screen
+#
+########################################################
+
+########################################################
+$ACTION
+#--- Actions liées à la fenêtre de saisie
+Case ACTION
+ When "OUVRE"         : Gosub OUVRE
+ When "DEBUT"         : Gosub DEBUT
+ When "SETBOUT"       : Gosub SETBOUT
+ When "AVANT_OK"      : Gosub AVANT_OK
+ When "OK"            : Gosub OK
+ When "BOUTON"        : Gosub BOUTON
+ When "END"           : Gosub CHECK
+ When "FIN"           : Gosub FIN
+Endcase
+
+Return
+
+########################################################
+$OUVRE
+# set the VT mode global variable. Standard code checks
+# this to prevent and/or enable certain logic getting
+# executed when
+
+GVTMOD=1
+
+# Initialisation du site de stock
+Gosub INIT_STOFCY From ENVADC
+
+Gosub OUVRE_SMR From ENVADC
+
+Return
+
+########################################################
+$DEBUT
+
+Local  Integer WOK, WCPT
+
+# GFLAG contains the miscellaneous receipt transaction
+GFLAG = func ENVADC.SETTRANS(1)
+
+[M:XAMR]SRTNUM = GFLAG
+
+Gosub DEBUT_SMR From ENVADC
+
+Gosub INIT_SCREEN
+
+# verify that the ADC site is set
+If GXAFCY=""
+   Call ERREUR(mess(16,7750,1)) From GESECRAN : FIN = 1 : Return
+Endif
+
+zonsui = "[M:XAMR1]ZCODBAR" # Aelis - Para saltar la pantalla de cabecera "negra" e ir directamente a la ubicación
+
+Return
+
+########################################################
+$SETBOUT
+
+If !find("O",CHBOU) CHBOU+="O" Endif
+If !find("1",CHMEN) CHMEN+="1" Endif
+
+Return
+
+########################################################
+$AVANT_OK
+
+If [M:XAMR1]ITMREF="" | [M:XAMR1]PCU="" | [M:XAMR1]QTYPCU<=0
+   GERR=1 : GMESSAGE=mess(17,7750,1)
+   #zonsui="[M:XAMR1]ITMREF"     #Aelis
+   zonsui="[M:XAMR1]ZCODBAR"     #Aelis
+Endif
+
+Return
+
+########################################################
+$OK
+Gosub OK_SMR From ENVADC
+If GOUVENT>1
+   Call GETERR_GOUVENT(GOUVENT, GMESSAGE) From ENVADC
+   #GERR = 1 : zonsui="[M:XAMR1]ITMREF"  #Aelis
+   GERR = 1 : zonsui="[M:XAMR1]ZCODBAR"  #Aelis
+   Return
+Endif
+
+If [F:ITM]LOTMGTCOD>1
+   Call PEREMPTION_LOT("XAMR1","SMR1") From ENVADC
+Endif
+
+[L]WCPT = [M:XAMR]WCPT
+Effzo [M:XAMR1]1-99
+[M:XAMR]WCPT   = [L]WCPT+1
+[M:XAMR]STOFCY = [M:SMR0]STOFCY
+[M:XAMR1]STOFCY = [M:SMR0]STOFCY
+[M:XAMR]SRTNUM = GFLAG
+Affzo [M:XAMR]
+Affzo [M:XAMR1]
+#zonsui = "[M:XAMR1]ITMREF"  #Aelis
+zonsui = "[M:XAMR1]ZCODBAR"  #Aelis
+Return
+
+########################################################
+$BOUTON
+# Création
+If BOUT="1" Gosub CRE Endif
+# Abandon
+If BOUT="2" Gosub ABA Endif
+
+Return
+
+########################################################
+$ABA
+
+Gosub INIT_SCREEN
+GREP = ""
+#zonsui = "[M:XAMR1]ITMREF"    #Aelis
+zonsui = "[M:XAMR1]ZCODBAR"    #Aelis
+
+Return
+
+########################################################
+$CRE
+
+# Si article renseigné, enregistrement de la saisie (bouton OK)
+If [M:XAMR1]ITMREF<>""
+   Gosub AVANT_OK
+   If GERR=1 Return Endif
+   Gosub OK
+   If GERR=1 Return Endif
+Endif
+
+If [M:SMR1]NBLIG=0
+   # Saisie incomplète
+   #GERR=1 : GMESSAGE=mess(17,7750,1) : zonsui="[M:XAMR1]ITMREF" : Return
+   #Call ERREUR(mess(17,7750,1)) From GESECRAN : zonsui="[M:XAMR1]ITMREF" : Return  #Aelis
+   Call ERREUR(mess(17,7750,1)) From GESECRAN : zonsui="[M:XAMR1]ZCODBAR" : Return   #Aelis
+Endif
+
+#Gosub CRE_SMR From ENVADC
+Call CRE_SMR From ENVADC
+
+#--- Lot V01
+#-----impression des étiquettes ----#
+If [F:SRT]PRNCOD1 = 2
+   Call PRINT_ETI(GXAFCY,[M:SMR0]VCRTYP,[M:SMR0]VCRNUM) From STKADC
+Endif
+#-----impression des étiquettes ----#
+#If [F:SRT]PRNCOD1 = 2
+#  Local Char WPARAM(GLONVCR)(1..3) , WVALEUR(10)
+#  WPARAM(1) = GXAFCY
+#  WPARAM(2) = num$([M:SMR0]VCRTYP)
+#  WPARAM(3) = [M:SMR0]VCRNUM
+#  Call SAISIE_CHAR(WVALEUR,WPARAM,"VXSTOLB","VXSTOLB","SPEVXAPR") From GSAISIE
+#Endif
+#---
+
+GPROGRAMME = "GSAISIE"
+GBOITE     = BOITE
+Call NOMTRTWIN(GBOITE,WINPROG) From MSKDIV
+Gosub DEFVAR From= WINPROG
+GREP="" : REP=""
+GNOLIG = 0
+
+Gosub INIT_SCREEN
+
+GREP = ""
+#zonsui = "[M:XAMR1]ITMREF"  #Aelis
+zonsui = "[M:XAMR1]ZCODBAR"  #Aelis
+
+Return
+
+########################################################
+$CHECK
+
+If [M:SMR1]NBLIG<>0
+   WOK=1
+   # Pièce en cours de saisie non enregistrée
+   Call OUINON(mess(38,7750,1),WOK) From GESECRAN
+   If WOK<>2
+      #FIN=0 : zonsui="[M:XAMR1]ITMREF" : Return   #Aelis
+      FIN=0 : zonsui="[M:XAMR1]ZCODBAR" : Return   #Aelis
+   Endif
+Endif
+
+Return
+
+########################################################
+$FIN
+
+Gosub FIN_SMR From ENVADC
+
+GVTMOD=0
+
+Return
+
+########################################################
+$INIT_SCREEN
+
+Default Mask [SMR0]
+
+Raz [M:SMR0]
+Raz [M:SMR1]
+
+# set post date and site
+[M:SMR0]IPTDAT = date$
+[M:SMR0]STOFCY = GXAFCY
+
+Raz [M:XAMR]
+Raz [M:XAMR1]
+
+Gosub RAZCRE   From SUBSMRA
+
+# Chargement du paramétrage lié au site
+If GFCY<>[M:SMR0]STOFCY
+   GFCY=[M:SMR0]STOFCY
+   Gosub CHARG_PARAM From SUBSMRA
+Endif
+
+[M:XAMR1]STOFCY = [M:SMR0]STOFCY
+[M:XAMR]STOFCY = [M:SMR0]STOFCY
+[M:XAMR]SRTNUM = GFLAG
+
+Affzo [M:XAMR]1-99
+Affzo [M:XAMR1]1-99
+
+nolign=0
+
+MA=1
+Gosub SETMASK From=WINPROG
+Default Mask [M:XAMR]
+
+Return
+
+########################################################
+# Screen Actions
+########################################################
+
+########################################################
+Subprog AM_SRTNUM(VALEUR)
+Variable Char    VALEUR()
+
+GFLAG   = VALEUR
+#--- Lot V01
+GSMRNUM = VALEUR
+
+[M:SMR0]TRSCOD = [F:SRT]TRSCOD
+[M:SMR0]TRSFAM = [F:SRT]TRSFAMDEF
+[M:SMR0]ENTCOD = [F:SRT]ENTCOD
+If [F:SRT]SPERFLG <> 2   # hcb 60191
+   Diszo  [M:XAMR1]SHLDAT
+Endif
+
+End
+
+########################################################
+Subprog C_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR=""
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+Local    Integer WRET
+
+Gosub AM_ITMREF_SMR From ENVADC
+
+End
+
+########################################################
+Subprog AM_PCU(VALEUR)
+Variable Char    VALEUR()
+Local Char    LUSCAV
+Local Char    LFMT
+Local Integer LMODIF
+
+Gosub AM_PCU_SMR From ENVADC
+
+End
+
+########################################################
+Subprog C_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+
+If VALEUR<=0
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+
+Gosub AM_QTYPCU_SMR From ENVADC
+
+End
+
+########################################################
+Subprog AM_LOT(VALEUR)
+Variable Char    VALEUR()
+
+
+# Si uniquement gestion de lot et lot existant, pas d'accès à la péremption
+If find([F:ITM]LOTMGTCOD,2,3)
+   Read [F:STL]STL0=[M]ITMREF;VALEUR;""
+   If fstat
+      Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",[M:XAMR1]SHLDAT) From STKLIB
+      If [F:SRT]SPERFLG <> 2            # hcb  60191
+         Diszo  [M:XAMR1]SHLDAT
+      Else
+         Actzo [M]SHLDAT
+      Endif
+   Else
+      [M]SHLDAT = [F:STL]SHLDAT
+      Diszo [M]SHLDAT
+   Endif
+   Affzo [M]SHLDAT
+Endif
+End
+
+########################################################
+Subprog C_SLO(VALEUR)
+Variable Char    VALEUR()
+
+Gosub C_SLO_SMR From ENVADC
+
+End
+
+########################################################
+Subprog AM_SLO(VALEUR)
+Variable Char    VALEUR()
+
+# Si gestion de lot/sous-lot et lot existant, pas d'accès à la péremption
+If [F:ITM]LOTMGTCOD=4
+   Read [F:STL]STL0=[M]ITMREF;[M]LOT;VALEUR
+   If fstat
+      Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",[M:XAMR1]SHLDAT) From STKLIB
+      If [F:SRT]SPERFLG <> 2            # hcb  60191
+         Diszo  [M:XAMR1]SHLDAT
+      Else
+         Actzo [M]SHLDAT
+      Endif
+
+   Else
+      [M]SHLDAT = [F:STL]SHLDAT
+      Diszo [M]SHLDAT
+   Endif
+   Affzo [M]SHLDAT
+Endif
+End
+
+########################################################
+Subprog AS_SHLDAT(VALEUR)
+Variable Date    VALEUR
+
+If [F:ITM]EXYMGTCOD > 1 & VALEUR = [0/0/0]
+   Call CALPER([F:ITM]EXYMGTCOD,date$,[F:ITM]SHL,[F:ITM]SHLUOM,"",VALEUR) From STKLIB
+Endif
+End
+
+########################################################
+Subprog C_SHLDAT(VALEUR)
+Variable Date    VALEUR
+If VALEUR > [31/12/2999]
+  mkstat = 2
+Endif
+If [F:ITM]EXYMGTCOD > 1 & VALEUR = [0/0/0]
+   mkstat = 2
+Endif
+End
+
+######################################################################################
+######################################################################################
+## Etiquette ajoutée par le superviseur (écran VXAMR1) 09/09/2014 15:14:37 (HCB)
+######################################################################################
+Subprog C_LOT(VALEUR)
+Variable Char    VALEUR()
+If VALEUR <> [M]LOT
+   Raz [M]ECCVALMAJ
+   Raz [M]ECCVALMIN
+Endif
+
+End
+
+
+######################################################################################
+

@@ -1,0 +1,159 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#=======================================================
+#SPEUTILSATUCESA Archivo de Utiles para SATUCESA
+#by VRD Enero 2018
+#=======================================================
+######==================================###################
+Subprog LEERCODIGODEBARRASENTRADAVARIA(ZLVALOR)
+Value Char ZLVALOR
+Global Char ZLCODLOT(20),ZLCODITM(20)
+Global Integer IL1,IL2,ZLCANT
+IL1=0:IL2=0:ZLCODLOT="":ZLCODITM="":ZLCANT=0
+IL1= instr(1,ZLVALOR,"%A")
+IL2= instr(1,ZLVALOR,"%Q")
+If ZLVALOR <> ""  # Deja pasar si no se introduce nada
+    If IL1 <> 0 and IL2 <> 0  # Comprueba que sea código de barras válido
+      ZLCODLOT=mid$(ZLVALOR,1,IL1-1)
+      ZLCODITM=mid$(ZLVALOR,IL1+2,(IL2-IL1)-2)
+      ZLCANT=val(mid$(ZLVALOR,IL2+2,len(ZLVALOR)))
+    Else
+      Errbox("Código de barras ilegible")
+      [M:XAMR1]ZCODBAR = ""
+      Affzo [M:XAMR1]ZCODBAR
+      zonsui = "[M:XAMR1]ZCODBAR"
+    Endif
+Endif
+
+End           # FIN LeerCodigoDeBarrasEntradaVaria
+
+####======================================#####
+Subprog LEERCODIGODEBARRASSALIDAVARIA(ZLVALOR)
+Value Char ZLVALOR
+Global Char ZLCODLOT(20),ZLCODITM(20)
+Global Integer IL1,IL2,ZLCANT
+IL1=0:IL2=0:ZLCODLOT="":ZLCODITM="":ZLCANT=0
+IL1= instr(1,ZLVALOR,"%A")
+IL2= instr(1,ZLVALOR,"%Q")
+If ZLVALOR <> ""  # Deja pasar si no se introduce nada
+    If IL1 <> 0 and IL2 <> 0  # Comprueba que sea código de barras válido
+      ZLCODLOT=mid$(ZLVALOR,1,IL1-1)
+      ZLCODITM=mid$(ZLVALOR,IL1+2,(IL2-IL1)-2)
+      ZLCANT=val(mid$(ZLVALOR,IL2+2,len(ZLVALOR)))
+    Else
+      Errbox("Código de barras ilegible")
+      [M:XAMO]ZCODBAR = ""
+      Affzo [M:XAMO]ZCODBAR
+      zonsui = "[M:XAMO]ZCODBAR"
+    Endif
+Endif
+
+End           # FIN LeerCodigoDeBarrasSalidaVaria
+##########=====================================######
+Subprog LEERCODIGODEBARRASCAMBIOSTOCK(ZLVALOR)
+Value Char ZLVALOR
+Global Char ZLCODLOT(20),ZLCODITM(20)
+Global Integer IL1,IL2,ZLCANT
+IL1=0:IL2=0:ZLCODLOT="":ZLCODITM="":ZLCANT=0
+IL1= instr(1,ZLVALOR,"%A")
+IL2= instr(1,ZLVALOR,"%Q")
+If ZLVALOR <> ""  # Deja pasar si no se introduce nada
+    If IL1 <> 0 and IL2 <> 0  # Comprueba que sea código de barras válido
+      ZLCODLOT=mid$(ZLVALOR,1,IL1-1)
+      ZLCODITM=mid$(ZLVALOR,IL1+2,(IL2-IL1)-2)
+      ZLCANT=val(mid$(ZLVALOR,IL2+2,len(ZLVALOR)))
+    Else
+      Errbox("Código de barras ilegible")
+      [M:XASC]ZCODBAR = ""
+      Affzo [M:XASC]ZCODBAR
+      zonsui = "[M:XASC]ZCODBAR"
+    Endif
+Endif
+
+End           # FIN LeerCodigoDeBarrasCambioStock
+
+###=========GetCamposCabeceraRecepciones==============########
+Subprog GETCAMPOSCABECERARECEPCIONES(ZCVALOR)
+Value Char ZCVALOR
+Global Integer IC1,IC2,ZCCANT()
+Global Char ZCCODLOT(20),ZCCODITM(20)
+IC1=0:IC2=0:ZCCODLOT="":ZCCODITM="":ZCCANT=0
+If ZCVALOR <>""
+  IC1= instr(1,ZCVALOR,"%A")
+  IC2= instr(1,ZCVALOR,"%Q")
+  If IC1 <> 0 and IC2 <> 0
+    ZCCODLOT=mid$(ZCVALOR,1,IC1-1)
+    ZCCODITM=mid$(ZCVALOR,IC1+2,(IC2-IC1)-2)
+    ZCCANT=val(mid$(ZCVALOR,IC2+2,len(ZCVALOR)))
+  Else
+    Errbox("Código de barras ilegible")
+    [M:APR0]ZCODBARPED = ""
+    Affzo [M:APR0]ZCODBARPED
+    zonsui = "[M:APR0]ZCODBARPED"
+  Endif
+Endif
+
+End            # FIN GetCamposCabeceraRecepciones
+
+
+####===============GETCODIGOARTICULO===================####
+Subprog GETCODIGOARTICULO(ZLVALOR)
+Value Char ZLVALOR
+Global Char ZLCODLOT(20),ZLCODITM(20)
+Global Integer IL1,IL2,ZLCANT
+IL1=0:IL2=0:ZLCODLOT="":ZLCODITM="":ZLCANT=0
+IL1= instr(1,ZLVALOR,"%A")
+IL2= instr(1,ZLVALOR,"%Q")
+If ZLVALOR <> ""  # Deja pasar si no se introduce nada
+    If IL1 <> 0 and IL2 <> 0  # Comprueba que sea código de barras válido
+      ZLCODLOT=mid$(ZLVALOR,1,IL1-1)
+      ZLCODITM=mid$(ZLVALOR,IL1+2,(IL2-IL1)-2)
+      ZLCANT=val(mid$(ZLVALOR,IL2+2,len(ZLVALOR)))
+    Else
+      Errbox("Código de barras ilegible")
+      [M:XCAS]ZCODBAR = ""
+      Affzo [M:XCAS]ZCODBAR
+      zonsui = "[M:XCAS]ZCODBAR"
+    Endif
+Endif
+
+End           # FIN LeerCodigoDeBarrasCambioStock
+
+
+### =========Registraaccion=============#
+######################################################################################
+Subprog REGISTRAACCION(ZVALOR)
+Value Char ZVALOR
+Local Integer SIZE
+SIZE = filinfo("vrdregistraaccion", 7)
+If SIZE < 0 :                   # El fichero no existe
+  Openo "vrdregistraaccion"     # se abre y se crea
+  adxifs=";"
+Else                            # el fichero existe
+  Openo                         # cierra el archivo
+  Openo "vrdregistraaccion",-1  # modo append
+  adxifs=";"
+Endif
+
+Wrseq("============"+num$(ZVALOR)+"============")
+#If dim(N      )>=0 : Wrseq("N    - "+num$(N        )) : Endif
+#If dim(NBLIG      )>=0 : Wrseq("NBLIG    - "+num$(NBLIG        )) : Endif
+If dim(NBLIG      )>=0 and NBLIG > 0
+  If dim([M:PTH1]LOT(NBLIG)      )>=0 : Wrseq("LOT    - "+num$([M:PTH1]LOT(nolign-1)         )) : Endif
+  If dim([M:PTH1]POHNUM(NBLIG)      )>=0 : Wrseq("POHNUM    - "+num$([M:PTH1]POHNUM(NBLIG)         )) : Endif
+Endif
+#
+#If dim(COUZON      )>=0 :Wrseq(num$(COUZON)) :Endif #: NAME OF CURRENT Field.
+#If dim(CZ      )>=0 :Wrseq(num$(CZ)) :Endif     #: CURRENT Value OF Field.
+#If dim(COUIND      )>=0 : Wrseq(num$(COUIND)) :Endif #: CURRENT INDEX (ARRAY FIELDS).
+#
+
+#Local Integer STAT
+#Local Char YSEQNUM(50)
+#Call NUMERO("ZPRUE","",date$,"",[L]YSEQNUM,STAT) From SUBANM
+##Infbox num$("Contador: " + [L]YSEQNUM)
+#Wrseq("Contador: " + num$([L]YSEQNUM))
+
+Openo
+
+End
+

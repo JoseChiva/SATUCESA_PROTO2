@@ -1,0 +1,34 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#SPEVXCAS  Consultas
+
+$ACTION
+
+Return
+######################################################################################
+## Después de campo ZCODBAR
+######################################################################################
+Subprog AP_ZCODBAR(VALEUR)
+Variable Char    VALEUR()
+
+Call GETCODIGOARTICULO(VALEUR) From SPEUTILSATUCESA
+
+If num$(ZLCODLOT) <> "-" and num$(ZLCODITM)<> "-" and num$(ZLCANT)<>"0"
+  [M:XCAS]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+  Affzo [M:XCAS]ZCODBAR
+Endif
+#zonsui = "[M:XCAS]ZCODBAR"
+End
+######################################################################################
+
+######################################################################################
+## Antes de entrada ITMREF
+######################################################################################
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:XCAS]ITMREF = ZLCODITM
+Affzo [M:XCAS]ITMREF
+End
+
+
+######################################################################################
+

@@ -1,0 +1,20 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Gestión de la máscara SAUTINVD (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla SAUTINVD) 21/02/2018 19:43:51 (ADMIN)
+######################################################################################
+Subprog AM_PRNFLG(VALEUR)
+Variable Integer VALEUR
+
+If VALEUR = 2
+  [M:DIA]PRNNAM="ZFACVEN"
+  [M:DIA]PRNDEN="IMP002"
+  Affzo [M:DIA]1-99
+Endif
+
+End
+
+
+######################################################################################
+

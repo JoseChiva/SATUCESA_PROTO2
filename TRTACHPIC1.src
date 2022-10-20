@@ -1,0 +1,1721 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#############################################################################
+# TRTACHPIC1         Traitements des prises en compte          Module ACHAT #
+#                                PICKING                                    #
+# ------------------------------------------------------------------------- #
+# Sous-programmes :                                                         #
+#   - PICKE_CDE  : SAISIE LIGNES DE COMMANDES SELON CRITERES                #
+#   - PICKE_LIV  : Saisie lignes DL inter-site                              #
+# Issue 106506 - 2015-04-28 by SR : Landed Cost                             #
+#   - PICKE_SHIP : Picking lignes d"expédition                              #
+# ------------------------------------------------------------------------- #
+# ACTIONS modélisation WEB (Saisie de fenêtre GSAISIE)                      #
+#   - SELPPH    : Sélection des appels d'offre                              #
+#   - SELPSH    : Sélection des demandes d'achat                            #
+#   - SAIPECB4  : Prise en compte des besoins d'achat depuis les DL         #
+#############################################################################
+
+
+$ACTION
+Case ACTION
+ When "OUVRE"
+  #--------------------------------------------------------------#
+  # Avant la définition des boutons et l'ouverture de la fenêtre #
+  #--------------------------------------------------------------#
+  Case GACTION
+   When "SELPPH"     : Gosub OUV_SELPPH
+   When "SELPSH"     : Gosub OUV_SELPSH
+   When "SAIPECB4"   : Gosub OUV_SAIPECB4
+  Endcase
+ When "TITRE"
+  #-------------------------------------------#
+  # Titre juste avant ouverture de la fenêtre #
+  #-------------------------------------------#
+  Case GACTION
+   When "SELPPH"     : TIT=mess(20,195,1)
+   When "SELPSH"     : TIT=mess(16,195,1)
+   When "SAIPECB4"   : TIT=mess(42,195,1)
+  Endcase
+ When "DEBUT"
+  #---------------------------------#
+  # Après l'ouverture de la fenêtre #
+  #---------------------------------#
+  Case GACTION
+   When "SELPPH"     : Gosub DEB_SELPPH
+   When "SELPSH"     : Gosub DEB_SELPSH
+   When "SAIPECB4"   : Gosub DEB_SAIPECB4
+  Endcase
+ When "AP_CHOIX"
+  Case GACTION
+   When "SELPSH"     : Gosub AP_SELPSH
+  Endcase
+   When "SELPSH"
+ When "OK"
+  #--------------------------------#
+  # Après l'exécution du bouton OK #
+  #--------------------------------#
+  Case GACTION
+   When "SELPPH"     : Gosub OK_SELPPH
+   When "SELPSH"     : Gosub OK_SELPSH
+   When "SAIPECB4"   : Gosub OK_SAIPECB4
+  Endcase
+ When "ABA"
+  #-------------------------------------#
+  # Après l'exécution du bouton ABANDON #
+  #-------------------------------------#
+  Case GACTION
+   When "SAIPECB4"   : Gosub ABA_SAIPECB4
+  Endcase
+ When "APRES_MODIF"
+  #------------------------------------#
+  # Après chaque modification de champ #
+  #------------------------------------#
+  Case GACTION
+   When "SAIPECB4"   : REP="M"
+  Endcase
+ When "SETBOUT"
+  #-------------------------------#
+  # Grisage/dégrisage des boutons #
+  #-------------------------------#
+  Case GACTION
+   When "SAIPECB4"   : Gosub SETB_SAIPECB4
+  Endcase
+ When "FINSAI"
+  #------------------------------------------#
+  # Avant de revenir à la fenêtre précédente #
+  #------------------------------------------#
+  Case GACTION
+   When "SELPPH"     : Gosub FSA_SELPPH
+   When "SELPSH"     : Gosub FSA_SELPSH
+   When "SAIPECB4"   : Gosub FSA_SAIPECB4
+  Endcase
+Endcase
+Return
+
+
+##########################################################
+# SELPSH : Sélection de DA depuis les appels d'offre     #
+##########################################################
+#--------------------------------------------------------------#
+# Avant la définition des boutons et l'ouverture de la fenêtre #
+#--------------------------------------------------------------#
+$OUV_SELPSH
+Local Char     WITMREF(GLONITM)    : WITMREF = VALEUR
+Local Char     WPQHFCY(GLONFCY)    : WPQHFCY = PARAM(1)
+Local Shortint I, NOL              : NOL     = val(PARAM(2))
+Local Integer  SAVLIGFOU, SAI_OK, WRET
+Local Char     WBPSNUM(GLONBPS)
+Local Char     WCRITPSD(100)
+Return
+#---------------------------------#
+# Après l'ouverture de la fenêtre #
+#---------------------------------#
+$DEB_SELPSH
+Local Shortint MAXI : MAXI=dim([M:PSDW]ITMREF)
+Raz [M:PSDW]
+If WITMREF<>""
+  WCRITPSD="ITMREF=WITMREF & LINCLEFLG<>2"
+Else
+  WCRITPSD="LINCLEFLG<>2"
+Endif
+If clalev([M:PQH1]) & GPQHBUY=2 & GBUYFLT=2
+  WCRITPSD-="& (LINBUY=[M:PQH1]REQUSR | LINBUY='')"
+Endif
+nolign=1
+For [PSD] Where evalue(WCRITPSD)
+  Raz WRET
+  For [PWO]PWO0 Where PRONUM=adxuid(2)
+&                   & CODFNC="PQH"
+&                   & WIPNUM=[F:PSD]PSHNUM
+&                   & PSDLIN=[F:PSD]PSDLIN
+&                   & [F:PWO]QTYSTU<>0
+    WRET+=1
+    If WRET<>0 Break : Endif
+  Next
+  If WRET=0
+    If [F:FCY]FCY<>[F:PSD]PSHFCY
+      Read [FCY] FCY0=[F:PSD]PSHFCY : If fstat Raz [F:FCY] : Endif
+    Endif
+    If [F:FCY]LEGCPY = GSOCIETE
+      [M:PSDW]ITMREF(nolign-1)    = [F:PSD]ITMREF
+      [M:PSDW]ITMDES(nolign-1)    = [F:PSD]ITMDES
+      [M:PSDW]EXTRCPDAT(nolign-1) = [F:PSD]EXTRCPDAT
+      [M:PSDW]QTYPUU(nolign-1)    = [F:PSD]QTYPUU
+      [M:PSDW]PUU(nolign-1)       = [F:PSD]PUU
+      If [F:PSH]PSHNUM<>[F:PSD]PSHNUM
+        Read [PSH] PSH0=[F:PSD]PSHNUM : If fstat Raz [F:PSH] : Endif
+      Endif
+      [M:PSDW]REQUSR(nolign-1)    = [F:PSH]REQUSR
+      [M:PSDW]PSHNUM(nolign-1)    = [F:PSD]PSHNUM
+      [M:PSDW]PSDLIN(nolign-1)    = [F:PSD]PSDLIN
+      [M:PSDW]LINBUY(nolign-1)    = [F:PSD]LINBUY
+      [M:PSDW]PJT(nolign-1)       = [F:PSD]PJT
+      nolign += 1
+      If nolign>MAXI : Break : Endif
+    Endif
+  Endif
+Next
+[M:PSDW]NBDA = nolign-1
+If [M:PSDW]NBDA = 0
+   GERR = 2 : GMESSAGE = mess(99,100,1) : FIN = 1 : Return
+Endif
+Sorta [M:PSDW]NBDA [M:PSDW]NBDA Order By [M:PSDW]EXTRCPDAT(indice),
+&                                        [M:PSDW]ITMREF(indice)
+Affzo [PSDW]1-99
+Return
+#--------------------------------#
+# Avant l'exécution du bouton OK #
+#--------------------------------#
+$AP_SELPSH
+If REPONSE=GSTAOK
+  #----- Date de réception prévue inférieure à la date limite de l'appel d'offre ! -----#
+  If [M:PSDW]EXTRCPDAT(nolign-1)<[M:PQH1]RSPDEA
+    Local Integer  OK
+    OK=2 : Call AVERTIR(mess(308,194,1),OK) From GESECRAN
+    If OK=1  mkstat=1 : REPONSE=GSTAFIN : Return : Endif
+  Endif
+Endif
+Return
+#--------------------------------#
+# Après l'exécution du bouton OK #
+#--------------------------------#
+$OK_SELPSH
+#----- Lecture ligne DA sélectionnée si nécessaire -----#
+If [F:PSD]PSHNUM<>[M:PSDW]PSHNUM(nolign-1) | [F:PSD]PSDLIN<>[M:PSDW]PSDLIN(nolign-1)
+  Read [PSD] PSD0=[M:PSDW]PSHNUM(nolign-1);[M:PSDW]PSDLIN(nolign-1)
+  If fstat Raz [F:PSD] : Endif
+Endif
+Default Mask [PQH1]
+#---- Vérification que le fournisseur n'est pas déja dans la liste
+If [F:PSD]BPSNUM<>""
+  If !find([F:PSD]BPSNUM,[M:PQH1]BPSNUM(0..[M:PQH1]NBFOU-1))
+   SVGLIGFOU=[M:PQH1]NBFOU
+   WBPSNUM  =[F:PSD]BPSNUM
+  Endif
+Endif
+If dim(OK)<1 Local Integer OK : Endif
+I=NOL
+nolign=NOL+1
+WNUM=[F:PSD]PSHNUM : WLIN=[F:PSD]PSDLIN
+#----- Lecture ligne DA sélectionnée si nécessaire -----#
+If [F:PSD]PSHNUM<>WNUM | [F:PSD]PSDLIN<>WLIN
+  Read [PSD] PSD0=WNUM;WLIN    : If fstat Raz [F:PSD] : Endif
+Endif
+OK=2
+NOL=nolign-1
+nolign=NOL+1
+Gosub CHARG_LIG_ART From SUBPQHA
+[L]SAI_OK=1
+WITMREF = [F:PSD]ITMREF
+Gosub CREMOD_PWO From SUBPQHA
+[M:PQH1]PICDA=[M:PQH1]PQHLIN(NOL)
+#---- Vérification que le fournisseur n'est pas déja dans la liste
+If [F:PSD]BPSNUM<>""
+  [L]WBPSNUM=[F:PSD]BPSNUM
+  If !find([L]WBPSNUM,[M:PQH1]BPSNUM(0..[M:PQH1]NBFOU-1))
+    Raz [F:BPS] : [F:BPS]BPSNUM=[F:PSD]BPSNUM
+    [L]SAVLIGFOU=[M:PQH1]NBFOU
+    WBPSNUM=[F:BPS]BPSNUM
+    #----- Lecture du fournisseur -----#
+    If [F:BPS]BPSNUM <> WBPSNUM
+      Read [BPS] BPS0=WBPSNUM      : If fstat Raz [F:BPS] : Endif
+    Endif
+    If [F:BPR]BPRNUM <> WBPSNUM
+      Read [BPR] BPR0=WBPSNUM      : If fstat Raz [F:BPR] : Endif
+    Endif
+    If [F:TMD]MDL<> [F:BPS]MDL
+      Read [TMD]TMD0= [F:BPS]MDL   : If fstat Raz [F:TMD] : Endif
+    Endif
+    Call CTLBPRCPY([F:BPS]BPSNUM,num$([M:PQH1]PQHFCY)) From CONTX3
+    If mkstat
+      OK=0 : Return
+    Endif
+    I=[M:PQH1]NBFOU
+    nolign=I+1
+    WBPSNUM=[F:BPS]BPSNUM
+    [M:PQH1]BPSNUM(nolign-1)=[F:BPS]BPSNUM
+    Gosub CHARG_LIG_BPS From SUBPQHA
+    nolign=I+1 : [M:PQH1]NBFOU+=1
+    #PICFLG=9
+    status=73  : Call APRES_NBFOU From SUBPQH
+    Affzo [PQH1]BPSNUM(nolign-1)
+  Endif
+Endif
+Return
+#------------------------------------------#
+# Avant de revenir à la fenêtre précédente #
+#------------------------------------------#
+$FSA_SELPSH
+If SAI_OK
+  If [M:PQH1]NBFOU<>[L]SAVLIGFOU
+    Affzo [PQH1]15
+    [M:PQH1]BPSNBR=[M:PQH1]NBFOU
+    Affzo [PQH1]BPSNBR
+  Endif
+  Affzo [PQH1]ITMREF(NOL), ITMDES(NOL), ITMDES1(NOL), PQDPJT(NOL),
+&             PUU(NOL), QTYPUU(NOL), RCPDAT(NOL)
+  nolign=[M:PQH1]NBLIG
+  VALEUR=WITMREF
+  mkstat=99
+Endif
+nolign=NOL+1
+Return
+
+
+##########################################################
+# SELPPH : Sélection appels d'offres                     #
+##########################################################
+#--------------------------------------------------------------#
+# Avant la définition des boutons et l'ouverture de la fenêtre #
+#--------------------------------------------------------------#
+$OUV_SELPPH
+Local    Shortint WTYP             : WTYP    = val(PARAM(1))
+Local    Char     WBPSNUM(GLONBPS) : WBPSNUM = PARAM(2)
+Local    Char     WITMREF(GLONITM) : WITMREF = PARAM(3)
+Local    Shortint WNOLIGN          : WNOLIGN = val(PARAM(4))
+Local    Char     WABMSK (04)      : WABMSK  = PARAM(5)
+# Issue 71069 - 2013-08-20 by SR : PJT
+Local    Char     WABMSKH (04)     : WABMSKH = PARAM(7)
+Local Char CRITERE (50)
+Local Integer  SAVNOLIGN : SAVNOLIGN=nolign
+If clalev ([F:PPH]) = 0  Local File PRESP     [PPH] : Endif
+If clalev ([F:PPD]) = 0  Local File PRESPD    [PPD] : Endif
+If clalev ([F:PQD]) = 0  Local File PQUOTATD  [PQD] : Endif
+If clalev ([F:ITM]) = 0  Local File ITMMASTER [ITM] : Endif
+
+Return
+#---------------------------------#
+# Après l'ouverture de la fenêtre #
+#---------------------------------#
+$DEB_SELPPH
+Raz [M:PPHW]
+Raz GBIDI3
+#----- Droits d'accès au site en fonction des habilitations ------#
+If GUSRFCY <> "\" & GNBAUZ<>GNBSITE
+  CRITERE = "find(PQHFCY,GUSRFCY(1..GNBAUZ))<>0"
+Else
+  CRITERE = "1=1"
+Endif
+#----- FILTRE SUIVANT ARTICLE - FOURNISSEUR  SUIVANT LA CLé ART-FOUR -----#
+If WITMREF = "" & WBPSNUM = ""
+  Filter [PPH] Where evalue (CRITERE) Order By Key PPH1
+Else
+  If WITMREF = ""
+     Filter [PPH] Where BPSNUM = WBPSNUM  & evalue (CRITERE) Order By Key PPH2
+  Elsif WBPSNUM = ""
+     Filter [PPH] Where ITMREF = WITMREF & evalue (CRITERE) Order By Key PPH1
+  Endif
+Endif
+#----- CHARGER Le Tableau -----#
+nolign =1
+For [PPH]
+  #--------------------------------------------------#
+  # LECTURE ARTICLE SI N'EXISTE PAS PAS DE SELECTION #
+  # PAS DE FILTRE EN FONCTION DES DATES DE VALIDITé  #
+  #--------------------------------------------------#
+  If [F:PQD]PQHNUM <> [F:PPH]PQHNUM | [F:PQD]PQDLIN <> [F:PPH]PQDLIN
+    Read [PQD]PQD0 = [F:PPH]PQHNUM;[F:PPH]PQDLIN
+    If fstat Raz [F:PQD] : Endif
+  Endif
+  # Issue 71069 - 2013-08-20 by SR : PJT :
+  # Si Multi affaire ou(pas de PJT à l'entête et 1ere ligne) ou  PJT de l'appel d'offre=PJT à l'entête
+  If GPJTSNGDOC = 1 |
+&  ((evalue("[M:"+WABMSKH+"]PJTH") = "" & evalue("[M:"+WABMSK+"]NBLIG") <1) | [F:PQD]PQDPJT =evalue("[M:"+WABMSKH+"]PJTH"))
+    Read [ITM]ITM0 = [F:PPH]ITMREF
+    If fstat = 0
+      Filter [PPD] Where BPSNUM = [F:PPH]BPSNUM & PQHNUM = [F:PPH]PQHNUM
+&                    & ITMREF = [F:PPH]ITMREF & PQDLIN = [F:PPH]PQDLIN
+      For [PPD]
+        [M:PPHW] = [F:PPH]
+        [M:PPHW] = [F:PPD]
+        # Issue 71069 - 2013-08-20 by SR : PJT
+        [M:PPHW]PQDPJT(nolign-1) = [F:PQD]PQDPJT
+        If [F:PPD]PRIDIV <> 0 : [M:PPHW]PRI(nolign-1) = [F:PPD]PRI / [F:PPD]PRIDIV : Endif
+        [M:PPHW]ITMDES(nolign-1) = [F:PQD]ITMDES
+        nolign +=1
+        If nolign>= dim([M:PPHW]BPSNUM) : Break 2 : Endif
+      Next
+    Endif
+  Endif
+  # FIN Issue 71069 - 2013-08-20 by SR : PJT
+Next
+[M:PPHW]NBRESP = nolign-1
+Filter [PPD]
+If [M:PPHW]NBRESP = 0
+  GERR = 2
+  GMESSAGE = mess(26,194,1)
+  FIN  = 1
+Endif
+Affzo [PPHW]1-99
+Return
+#--------------------------------#
+# Après l'exécution du bouton OK #
+#--------------------------------#
+$OK_SELPPH
+Local Decimal  WCOEUOM, WQTE
+Local Char SWMESS(80),WZONE  # Issue 71069 - 2013-08-20 by SR : PJT
+#-------------------------------------------------------------------#
+# IL FAUT METTRE à JOUR LES CHAMPS APRES LE CHOIX                   #
+# LECTURE DU DETAIL APPEL D'OFFRE POUR RECUPERER                    #
+# LES CHAMPS AFFAIRES ET SECTIONS ANALYTIQUES                       #
+# LA REFERENCE ET LE FOURNISSEUR SONT PASSéS PAR WITMREF ET WBPSNUM #
+# SINON PROBLEME LORS DE RECUP DE VALEUR                            #
+#-------------------------------------------------------------------#
+Read [PQD]PQD0 = [M:PPHW]PQHNUM(nolign-1);[M:PPHW]PQDLIN(nolign-1)
+If fstat = 0
+      # Issue 71069 - 2013-08-20 by SR : PJT
+      # Si première ligne première ligne & pas de code affaire à l'entête
+      If evalue("[M:"+WABMSK+"]NBLIG") <1 & evalue("[M:"+WABMSKH+"]PJTH")= "" & GPJTSNGDOC = 2
+         Assign  "[M:"+WABMSKH+"]PJTH" With [F:PQD]PQDPJT
+         WZONE = "[M:"+WABMSKH+"]PJTH"
+         If func TRTPJT.IS_PJT_AVAILABLE([F:PQD]PQDPJT,WZONE, SWMESS) = G_NON Then
+          Call PJT_ADD_MSG([F:PQD]PQDPJT, SWMESS) From TRTPJT
+          GERR = 1
+          OK = 0
+          Assign  "[M:"+WABMSKH+"]PJTH" With ""
+          Return
+        Endif
+      Else
+        WZONE = "[M:"+WABMSK+"]PJT"
+        If func TRTPJT.IS_PJT_AVAILABLE([F:PQD]PQDPJT,WZONE, SWMESS) = G_NON Then
+          Call PJT_ADD_MSG([F:PQD]PQDPJT, SWMESS) From TRTPJT
+          GERR = 1
+          OK = 0
+          Return
+        Endif
+      Endif
+      Assign "[M:"+WABMSK+"]PJT (WNOLIGN-1)" With [F:PQD]PQDPJT
+      # FIN Issue 71069 - 2013-08-20 by SR
+      WBPSNUM = [M:PPHW]BPSNUM(nolign-1)
+      WITMREF = [M:PPHW]ITMREF(nolign-1)
+      Assign "[M:"+WABMSK+"]PQHNUM (WNOLIGN-1)" With [M:PPHW]PQHNUM (nolign-1)
+      Assign "[M:"+WABMSK+"]PPDLIN (WNOLIGN-1)" With [M:PPHW]PPDLIN (nolign-1)
+      If WTYP = 1
+           Assign "[M:"+WABMSK+"]ITMDES (WNOLIGN-1)" With [F:PQD]ITMDES
+           Assign "[M:"+WABMSK+"]ITMDES1(WNOLIGN-1)" With [F:PQD]ITMDES1
+           Assign "[M:"+WABMSK+"]QTYPUU (WNOLIGN-1)" With [M:PPHW]MAXQTY (nolign-1)
+           Assign "[M:"+WABMSK+"]PUU (WNOLIGN-1)"    With [M:PPHW]PUU (nolign-1)
+           Assign "[M:"+WABMSK+"]CUR (WNOLIGN-1)"    With [M:PPHW]CUR (nolign-1)
+           Assign "[M:"+WABMSK+"]PJT (WNOLIGN-1)"    With [F:PQD]PQDPJT
+           If dim([F:PQD]CCE1) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE1 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE1 (WNOLIGN-1)" With [F:PQD]CCE1
+                Endif
+           Endif
+           If dim([F:PQD]CCE2) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE2 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE2 (WNOLIGN-1)" With [F:PQD]CCE2
+                Endif
+           Endif
+           If dim([F:PQD]CCE3) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE3 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE3 (WNOLIGN-1)" With [F:PQD]CCE3
+                Endif
+           Endif
+           If dim([F:PQD]CCE4) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE4 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE4 (WNOLIGN-1)" With [F:PQD]CCE4
+                Endif
+           Endif
+           If dim([F:PQD]CCE5) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE5 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE5 (WNOLIGN-1)" With [F:PQD]CCE5
+                Endif
+           Endif
+           If dim([F:PQD]CCE6) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE6 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE6 (WNOLIGN-1)" With [F:PQD]CCE6
+                Endif
+           Endif
+           If dim([F:PQD]CCE7) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE7 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE7 (WNOLIGN-1)" With [F:PQD]CCE7
+                Endif
+           Endif
+           If dim([F:PQD]CCE8) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE8 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE8 (WNOLIGN-1)" With [F:PQD]CCE8
+                Endif
+           Endif
+           If dim([F:PQD]CCE9) >=0
+                #----PROBLEME DU CODE ACTIVITE/dim FICHIER <> dim ECRAN
+                If evalue("dim([M:"+WABMSK+"]CCE9 (WNOLIGN-1))") >=0
+                        Assign "[M:"+WABMSK+"]CCE9 (WNOLIGN-1)" With [F:PQD]CCE9
+                Endif
+           Endif
+           #----------------------------------------------------#
+           # CALCUL DU PRIX NET :                               #
+           #       RéCUPéRATION STRUCTURE TARIF DU FOURNISSEUR  #
+           # SI PAS DE STRUCTURE --> PAS DE TARIF               #
+           #----------------------------------------------------#
+           Read [BPS] BPS0=[M:PPHW]BPSNUM(nolign-1)
+           If !fstat
+             Local Decimal NET
+             NET = 0
+             Local Decimal MAJREM(0..8)
+             For I=0 To 8
+               If evalue("dim([F:PPD]DISCRGVAL"+num$(I+1)+")")>0
+                 MAJREM(I)=evalue("[F:PPD]DISCRGVAL"+num$(I+1))
+               Endif
+             Next I
+             If dim(GCALNETLIN)>0  GCALNETLIN=nolign     : Endif
+             If dim(GCALNETABR)>0  GCALNETABR="[M:PPHW]" : Endif
+             Call CALNET(2,[F:BPS]PLISTC,[M:PPHW]PRI (nolign-1),MAJREM
+&                         ,[M:PPHW]MAXQTY (nolign-1),NET
+&                         ,[M:PPHW]CUR (nolign-1)) From TRTPRICE
+             If evalue("dim([M:"+WABMSK+"]NETPRI (WNOLIGN-1))") >=0
+               Assign "[M:"+WABMSK+"]NETPRI (WNOLIGN-1)" With NET
+             Endif
+             # Issue 93025 - 2013-11-27 by MUARN : régime de taxe fournisseur
+             Assign "[M:"+WABMSK+"]VACBPR(WNOLIGN-1)" With [F:BPS]VACBPR
+           Endif
+    Else
+        #----------------------------------------------------#
+        # IL FAUT CHARGER LA CLASSE PPD ET PPH SI type <> DA #
+        #----------------------------------------------------#
+        Read [PPD]PPD0=[M:PPHW]BPSNUM(nolign-1);[M:PPHW]PQHNUM(nolign-1);
+&                      [M:PPHW]PQDLIN(nolign-1);[M:PPHW]PPDLIN(nolign-1)
+        If fstat : Raz [F:PPD] : Endif
+        Filter [PPH]
+        Read [PPH]PPH0 = [M:PPHW]BPSNUM(nolign-1);[M:PPHW]PQHNUM(nolign-1);[M:PPHW]PQDLIN(nolign-1)
+        If fstat : Raz [F:PPH] : Endif
+    Endif
+Endif
+If WABMSK="PSH1"
+  GBIDI3 = 9
+  VALEUR = WITMREF
+  [M:PSH1]BPSNUM(WNOLIGN-1) = WBPSNUM
+  If WITMREF <> [F:ITM]ITMREF
+    Read [ITM]ITM0 = WITMREF
+    If fstat  : Raz [F:ITM] :   Endif
+  Endif
+  If VALEUR<>""
+    #----- Les actions contrôle et après modif sont effectuées automatiquement -----#
+    #---- Contrôle de la validité de l'UA chargée à partir de l'appel d'offre ----#
+    Call PCOUOM([M:PSH1]PUU(WNOLIGN-1),[M:PSH1]BPSNUM(WNOLIGN-1),VALEUR,3,4) From TRTACHCTL1
+    If mkstat
+      mkstat=0
+      #--- l'UA n'est pas valide donc on récupère celle de l'article
+      #--- Conversion de la qté chargée par l'appel d'offre si UA changée ------#
+      If [M:PSH1]PUU(WNOLIGN-1)<>[F:ITM]PUU
+         Call PCAL_QTY([M:PSH1]QTYPUU(WNOLIGN-1),[M:PSH1]PUU(WNOLIGN-1),WQTE,[F:ITM]PUU,
+&                      VALEUR,[M:PSH1]BPSNUM(WNOLIGN-1),1,WCOEUOM) From TRTACHQTE1
+         [M:PSH1]PUU(WNOLIGN-1)=[F:ITM]PUU
+         [M:PSH1]QTYPUU(WNOLIGN-1)=WQTE
+      Endif
+    Endif
+    [M:PSH1]STU (WNOLIGN-1)    = [F:ITM]STU
+    If [M:PSH1]ITMDES(WNOLIGN-1)=""
+      #----- Chargement des désignations article -----#
+      #Call CHARGE_ITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[M:PSH1]ITMDES(WNOLIGN-1)) From TRTX3
+      #If [M:PSH1]ITMDES(WNOLIGN-1)="" [M:PSH1]ITMDES(WNOLIGN-1)=[F:ITM]ITMDES1 : Endif
+      Call CHARGE_DEFITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[M:PSH1]ITMDES(WNOLIGN-1), "[F:ITM]") From TRTX3  # FGR 29/06/2009 : X3SUIVI56129
+      #[M:PSH1]ITMDES1(WNOLIGN-1) = [F:ITM]ITMDES1
+      Call CHARGE_DEFITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[M:PSH1]ITMDES1(WNOLIGN-1), "[F:ITM]") From TRTX3  # FGR 29/06/2009 : X3SUIVI56129
+    Endif
+    #----------------------------#
+    # calcul du montant ht ligne #
+    #----------------------------#
+    If [M:PSH1]QTYPUU(WNOLIGN-1)<>0 & [M:PSH1]NETPRI(WNOLIGN-1)<>0
+      [M:PSH1]LINAMT(WNOLIGN-1)=[M:PSH1]QTYPUU(WNOLIGN-1)*[M:PSH1]NETPRI(WNOLIGN-1)
+      Call ARRDEV([M:PSH1]LINAMT(WNOLIGN-1),[M:PSH1]CUR(WNOLIGN-1)) From TRTDIV
+    Endif
+    Call PCAL_QTY([M:PSH1]QTYPUU(WNOLIGN-1),[M:PSH1]PUU(WNOLIGN-1),[M:PSH1]QTYSTU(WNOLIGN-1),
+&         [M:PSH1]STU(WNOLIGN-1),VALEUR,[M:PSH1]BPSNUM(WNOLIGN-1),1,WCOEUOM) From TRTACHQTE1
+    [M:PSH1]ITMREF (WNOLIGN-1) = VALEUR
+    Endif
+Endif
+Return
+#------------------------------------------#
+# Avant de revenir à la fenêtre précédente #
+#------------------------------------------#
+$FSA_SELPPH
+# Issue 71069 - 2013-08-20 by SR : PJT
+Call PJT_INFO_MSG() From TRTPJT
+If WITMREF <> [F:ITM]ITMREF
+  Read [ITM]ITM0 = WITMREF
+  If fstat  : Raz [F:ITM] :   Endif
+Endif
+If GBIDI3 <> 0
+  Affzo [PSH0]PJTH
+  Affzo [PSH1]1-99
+  mkstat=99
+Endif
+nolign=SAVNOLIGN
+Return
+
+#############################################################################
+# PICKING : S/P de prise en compte des besoins d'achat                      #
+# ------------------------------------------------------------------------- #
+#   FOURN    : Numéro du fournisseur                                        #
+#   REFART   : Référence de l'article                                       #
+#   ACHETEUR : Code de l'acheteur                                           #
+#   QTEAOF   : Quantité de l'appel d'offre sélectionné en UA                #
+#   UA       : Unité d'achat de la commande et de la qté ci-dessus          #
+#   CODE     : Code traitement  1 = Prise en compte des "POS"               #
+#                                   sans filtre acheteur                    #
+#                               2 = Prise en compte des "POP"               #
+#                               3 = Prise en compte des "POS" & "POP"       #
+#                               4 = Prise en compte des "SCF"               #
+#                               5 = Prise en compte des "POS" & "POP"       #
+#                                   générés par la production               #
+#                               6 = Prise en compte des DA pour les         #
+#                                   articles non gérés en stock             #
+#                               7 = Prise en compte des "TRS" & "TRP"       #
+#                                   générés par les besoins inter-sites     #
+#                                   sans filtre acheteur                    #
+#                               8 = idem codes 2 + 7                        #
+#   RETQTY   : Quantité totale prise en compte en US                        #
+#   RETDAT   : Plus petite date de fin des besoins pris en compte           #
+#   WRETOUR  : Code retour = 0 Pas de besoin                                #
+#   WENDDAT  : Date de fin maxi pour la prise en compte des besoins         #
+#   RCPFCY   : Site de réception (Si la zone est renseignée alors les       #
+#              besoins sont filtrés sur ce site)                            #
+#   SHIFCY   : Site d'expédition (Si la zone est renseignée alors les       #
+#              besoins sont filtrés sur ce site)                            #
+# ------------------------------------------------------------------------- #
+# Remplacé par l'action SAIPECB4 avec paramètres :             MBT 27/12/00 #
+#   PARAM(1) = BPSNUM : Numéro du fournisseur                               #
+#   PARAM(2) = ITMREF : Référence de l'article                              #
+#   PARAM(3) = BUY    : Code de l'acheteur                                  #
+#   PARAM(4) = QTEAOF : Quantité en UA de l'appel d'offre sélectionné       #
+#   PARAM(5) = UA     : Unité d'achat                                       #
+#   PARAM(6) = TRAIT  : Code traitement (idem ci-dessus)                    #
+#   PARAM(7) = CODFNC : Code traitement ("PSH", "POH", "POD")               #
+#############################################################################
+#--------------------------------------------------------------#
+# Avant la définition des boutons et l'ouverture de la fenêtre #
+#--------------------------------------------------------------#
+$OUV_SAIPECB4
+Local Char     FOURN   (GLONBPS) : FOURN=PARAM(1)
+Local Char     REFART  (GLONITM) : REFART=PARAM(2)
+Local Char     ACHETEUR(GLONAUS) : ACHETEUR=PARAM(3)
+Local Decimal  QTEAOF            : QTEAOF=val(PARAM(4))
+Local Char     UA      (GLONUOM) : UA=PARAM(5)
+Local Integer  CODE              : CODE=val(PARAM(6))
+Local Char     FONCTION(3)       : FONCTION=PARAM(7)
+#----- Variables locales -----#
+Local Decimal  RETQTY
+Local Date     RETDAT
+Local Integer  WRETOUR
+Local Date     WENDDAT
+Local Char     RCPFCY(GLONFCY)
+Local Char     SHIFCY(GLONFCY)
+Local Shortint SAVNOLIGN   : SAVNOLIGN=nolign
+Local Shortint NOL         : NOL=nolign-1
+Local Shortint SAVNBLIG    : SAVNBLIG=[M:POD1]NBLIG
+Local Integer  OK
+Local Shortint I, ASFLG
+Local Decimal  GROPRI, DISCRGVAL(0..8), NETPRI
+Local Char     CRITERES(250), CRITLNK(70), SHIFCY(GLONFCY)
+#----- Prise en compte des besoins à partir des DL -----#
+If clalev([M:POD1])
+  If CODE=0  : # Appel en avant saisie de la période demande
+    ASFLG=1
+    If [M:POD1]CREFLG(nolign-1)<>0 | date$>[M:POD1]ENDDAT  FIN=1 : Return : Endif
+    If VALEUR<>"" | GPURPICKING=1 | nolign<=[M:POD1]NBLIG
+      FIN=1 : Return : # Pas d'appel auto de la prise en compte si 2ème fois
+    Endif
+  Endif
+  GPURPICKING=1
+  #----- Commande soldée. Modification interdite -----#
+  If [F:POH]CLEFLG=2
+    GMESSAGE=mess(47,194,1) : GERR=1 : FIN=1 : Return
+  Endif
+  #----- Contrat partiellement signé. Modification ou suppression interdite -----#
+  If [F:POH]APPFLG<3
+    GMESSAGE=mess(84,194,1) : GERR=1 : FIN=1 : Return
+  Endif
+  #----- Calcul date fin pour sélection des besoins à prendre en compte -----#
+  If [F:POC]FIMHOR<>0 | [F:POC]FRTHOR<>0
+    WENDDAT=date$+[F:POC]FIMHOR
+    Case [F:POC]FRTHORUOM
+      When 1 : WENDDAT += [F:POC]FRTHOR
+      When 2 : WENDDAT += (7*int([F:POC]FRTHOR/5)) + mod ([F:POC]FRTHOR,5)
+      When 3 : WENDDAT += [F:POC]FRTHOR*7
+      When 4 : WENDDAT += [F:POC]FRTHOR*14
+      When 5 : WENDDAT  = eomonth(addmonth(WENDDAT,[F:POC]FRTHOR))
+      When Default
+    Endcase
+  Endif
+  If WENDDAT>[M:POD1]ENDDAT WENDDAT=[M:POD1]ENDDAT : Endif
+  #----- Détermination du code traitement -----#
+  If [F:ITM]SCSFLG=2                               : # Sous-traitance
+    CODE=4
+  Elsif [F:ITM]STOMGTCOD>1
+    If [M:POD1]BETFCY=2 & [M:POD1]BETCPY<>2        : # Stock inter-sites/intra-société
+      CODE=8
+    Elsif [F:ITM]PRQFLG=2                          : # Stock et DA obligatoire
+      CODE=2
+    Elsif [F:ITM]PRQFLG<2                          : # Stock et DA non obligatoire
+      CODE=3
+    Endif
+  Else                                             : # Non géré en stock
+    CODE=6
+  Endif
+  #-----
+  RCPFCY=[M:POD1]PRHFCY
+  If CODE>6  SHIFCY=[M:POD1]STOFCY  Else  Raz SHIFCY : Endif
+Endif
+#----- La date de fin maxi n'est renseignée que pour les cde ouvertes -----#
+If CODE=1 Raz WENDDAT : Endif : # Si date de fin maxi nulle alors pas de limitation
+#----- Si aucun besoin n'existe, ne pas ouvrir fenêtre de picking -----#
+If CODE<>6 Goto VERIF_ORD_PICKING : Endif
+#----- Vérification existence des besoins dans le fichier des DA  -----#
+CRITERES='LINORDFLG=1 & ITMREF=REFART & LINCLEFLG=1 & LINAPPFLG>2'
+If GBUYFLT=2  CRITERES +=' & (LINBUY=ACHETEUR | LINBUY="")' : Endif
+If RCPFCY<>"" CRITERES +=' & PRHFCY=RCPFCY' : Endif
+For [PSD] Where evalue(CRITERES)
+  If clalev([F:PWO])>0
+    For [PWO] PWO0 Where PRONUM=adxuid(1)
+&                      & CODFNC=FONCTION
+&                      & WIPTYP=2
+&                      & WIPNUM=[F:PSD]PSHNUM
+&                      & PSDLIN=[F:PSD]PSDLIN
+&                      & ITMREF=[F:PSD]ITMREF
+      [F:PSD]ORDQTYSTU+=[F:PWO]QTYSTU
+    Next
+  Endif
+  If [F:PSD]QTYSTU>[F:PSD]ORDQTYSTU
+    #----- Contrôle existence du site et appartenance à la même sté juridique -----#
+    If [F:FCY]FCY<>[F:PSD]PSHFCY
+      Read [FCY] FCY0=[F:PSD]PSHFCY : If fstat Raz [F:FCY] : Endif
+    Endif
+    If [F:FCY]LEGCPY=GSOCIETE WRETOUR=1 : Break : Endif
+  Endif
+Next
+If WRETOUR=0  FIN=1 : Endif
+Return
+#----- Vérification existence des besoins dans le fichier encours -----#
+$VERIF_ORD_PICKING
+Case CODE
+  When 1 : CRITERES='WIPTYP=2 & WIPSTA=3 & ITMREF=REFART & left$(ABBFIL,2)<>"PO"'
+  When 2 : CRITERES='WIPTYP=2 & WIPSTA=2 & ITMREF=REFART & left$(ABBFIL,2)<>"PO"'
+  When 3 : CRITERES='WIPTYP=2 & WIPSTA>1 & ITMREF=REFART & left$(ABBFIL,2)<>"PO"'
+  When 4 : CRITERES='WIPTYP=4 & WIPSTA=1 & ITMREF=REFART'
+           # Issue 93771 GA 12/2013 changement de fournisseur interdit en sous-traitance
+           If FOURN<>""
+              CRITERES+='& (BPRNUM=FOURN | BPRNUM="")'
+           Endif
+  When 5 : CRITERES='WIPTYP=2 & WIPSTA>1 & ITMREF=REFART & left$(ABBFIL,2)<>"PO" & ABBFIL<>"PSD"'
+  When 7 : CRITERES='WIPTYP=7 & WIPSTA>1 & ITMREF=REFART & left$(ABBFIL,2)<>"PO"'
+  When 8 : CRITERES ='(WIPTYP=2 & WIPSTA=2 & ITMREF=REFART & left$(ABBFIL,2)<>"PO") |'
+           CRITERES-='(WIPTYP=7 & WIPSTA>1 & ITMREF=REFART & left$(ABBFIL,2)<>"PO")'
+Endcase
+#----- Filtre sur acheteur -----#
+If GBUYFLT=2 & CODE<>1 & CODE<>7
+  CRITLNK='[F:ITF]BUY=ACHETEUR | [F:ITF]BUY="" | [F:ORD]WIPTYP=7'
+Else
+  CRITLNK="1=1"
+Endif
+#----- Filtre sur site de réception et site d'expédition -----#
+If RCPFCY<>""          CRITERES-='& STOFCY=RCPFCY' : Endif
+If SHIFCY<>"" & CODE>6 CRITERES-='& (ORIFCY=SHIFCY | WIPTYP<>7)' : Endif
+#-----
+WRETOUR = 0
+Filter [ORD] Where evalue(CRITERES)
+Link [ORD] With [ITF] ITF0=[F:ORD]ITMREF;[F:ORD]STOFCY As [ORF]
+For [ORF] Where evalue(CRITLNK)
+  Gosub POINT_ORDLEC From TRTACHMGT1 : # Appel point d'entrée ORDLEC
+  If clalev([F:PWO])>0
+    For [PWO] PWO0 Where PRONUM=adxuid(1)
+&                      & CODFNC=FONCTION
+&                      & WIPTYP=[F:ORD]WIPTYP
+&                      & WIPNUM=[F:ORD]WIPNUM
+&                      & ITMREF=[F:ORD]ITMREF
+      [F:ORD]RMNEXTQTY-=[F:PWO]QTYSTU
+    Next
+  Endif
+  If [F:ORD]RMNEXTQTY>0 & ([F:ORD]STRDAT<=WENDDAT | WENDDAT=[0/0/0])
+    #----- Contrôle existence du site et appartenance à la même sté juridique -----#
+    If [F:FCY]FCY<>[F:ORD]STOFCY
+      Read [FCY] FCY0=[F:ORD]STOFCY : If fstat Raz [F:FCY] : Endif
+    Endif
+    If [F:FCY]LEGCPY=GSOCIETE
+      #---- "POP" demande d'achat : Prise en compte si ligne complètement signée ----#
+      If [F:ORD]WIPSTA=2 & [F:ORD]ABBFIL="PSD"
+        Read [PSD] PSD0=[F:ORD]VCRNUM;[F:ORD]VCRLIN
+        If fstat Raz [F:PSD] : Endif
+        If [F:PSD]LINAPPFLG>2 WRETOUR=1 : Break : Endif
+      #---- "POS","TRS" et "SCF" besoins production : Prise en compte sans restriction ----#
+      Else
+        WRETOUR=1 : Break
+      Endif
+    Endif
+  Endif
+Next
+Filter [ORD]
+If WRETOUR=0  FIN=1 : Endif
+Return
+#---------------------------------#
+# Après l'ouverture de la fenêtre #
+#---------------------------------#
+$DEB_SAIPECB4
+Raz [M:PPI1]
+#----- Ouverture fichier table des unités si nécessaire -----#
+If clalev([F:TUN])=0 Local File TABUNIT [TUN] : Endif
+#----- Lecture fournisseur et article si nécessaire -----#
+If [F:BPS]BPSNUM<>FOURN
+  Read [BPS] BPS0=FOURN  : If fstat Raz [F:BPS] : Endif
+Endif
+If [F:ITM]ITMREF<>REFART
+  Read [ITM] ITM0=REFART : If fstat Raz [F:ITM] : Endif
+Endif
+#----- Chargement des zones dans le masque -----#
+If WENDDAT<>[0/0/0]
+  [M:PPI1]WBORNE=WENDDAT   : [M:PPI1]POCFLG=2 : # Cas des commandes ouvertes
+  [M:PPI1]MAXDAT=[M:PPI1]WBORNE
+Endif
+[M:PPI1]BPSNUM=FOURN       : [M:PPI1]BPSNAM=[F:BPS]BPSNAM
+[M:PPI1]ITMREF=REFART
+#[M:PPI1]ITMDES=[F:ITM]ITMDES1
+Call CHARGE_DEFITMDES("DES1AXX",GLANGUE,[F:ITM]ITMREF,[M:PPI1]ITMDES, "[F:ITM]") From TRTX3 # FGR 30/06/2009 : X3SUIVI56189
+[M:PPI1]UOM   =[F:ITM]STU  : [M:PPI1]ORDBUY=ACHETEUR
+[M:PPI1]PUU   =UA          : [M:PPI1]QTEAOF=QTEAOF
+[M:PPI1]CODE  =CODE        : [M:PPI1]CHXDAT=2
+[M:PPI1]RCPFCY=RCPFCY      : [M:PPI1]SHIFCY=SHIFCY
+[M:PPI1]WCODFNC=FONCTION
+Call PCAL_QTY(QTEAOF,UA,[M:PPI1]PPDQTY,[M:PPI1]UOM,REFART,FOURN,1,GBIDD1) From TRTACHQTE1
+#----- Affichage foreground -----#
+If [M:PPI1]QTEAOF=0 Grizo [PPI1]PPDQTY : Endif
+# Issue 10622 - 2012-01-17 by MUARN : ajout fenêtre critère
+[M:PPI1]FCY=[M:POD1]POHFCY
+# Issue 71069 - 2016-03-29 by MUARN : pjt
+[M:PPI1]PJTDOC=[F:POC]PJT
+Affzo [PPI1]1-99
+# If WENDDAT<>[0/0/0] Diszo [PPI1]CHXDAT : Endif
+Return
+#--------------------------------#
+# Après l'exécution du bouton OK #
+#--------------------------------#
+$OK_SAIPECB4
+If [M:PPI1]TOTQTY=0  FIN=1 : Return : Endif
+#----- Tri du tableau de picking par type d'ordre & site réception -----#
+Sorta [M:PPI1]NBLIG [M:PPI1]NBLIG Order By [M:PPI1]WIPSTA(indice),
+&                                          [M:PPI1]STOFCY(indice)
+#----- Contrôle quantité prise avec quantité de l'appel d'offre -----#
+If clalev ([M:POH2])>0
+  If [M:POH2]PQHNUM(NOL)<>"" & [M:PPI1]TOTQTY<[M:PPI1]PPDQTY
+    OK=2 : Call AVERTIR(mess(87,194,1),OK) From GESECRAN
+    If OK=1 mkstat=1 : [M:PPI1]TOTQTY=0 : FIN=1 : Return : Endif
+  Endif
+  #----- Choix : Prix de l'appel d'offre ou recherche tarif -----#
+  If [M:POH2]PQHNUM(NOL)<>"" & [F:PPH]PLISTC=[F:BPS]PLISTC & [F:PPD]PRI<>0
+    OK=2 : Call OUINON(mess(88,194,1),OK) From GESECRAN
+  #----- Chargement du tarif de l'appel d'offre dans la ligne -----#
+    If OK=2
+      [M:POH2]GROPRI(NOL)=[F:PPD]PRI : GROPRI=[F:PPD]PRI
+      For I=1 To 9
+        If evalue ("dim([M:POH2]DISCRGVAL"+num$(I)+"(NOL))")>0
+          Assign "[M:POH2]DISCRGVAL"+num$(I)+"(NOL)" With evalue ("[F:PPD]DISCRGVAL"+num$(I))
+          Assign "[M:POH2]DISCRGREN"+num$(I)+"(NOL)" With GUPDPRIPUR
+          DISCRGVAL(I-1)=evalue("[F:PPD]DISCRGVAL"+num$(I))
+        Endif
+      Next I
+      If dim(GCALNETLIN)>0  GCALNETLIN=0         : Endif
+      If dim(GCALNETABR)>0  GCALNETABR="[F:PPD]" : Endif
+      Call CALNET(2,[F:BPS]PLISTC,GROPRI,DISCRGVAL,[F:PPD]MAXQTY,NETPRI,[M:POH1]CUR) From TRTPRICE
+      [M:POH2]NETPRI(NOL)=NETPRI : [M:POH2]LINFLG(NOL)=2
+    Endif
+  Endif
+Endif
+#----- Contrôle quantité prise avec quantité de l'appel d'offre (en DA) -----#
+If clalev([M:PSH1])>0
+  If [M:PSH1]PQHNUM(NOL)<>"" & [M:PPI1]TOTQTY<[M:PPI1]PPDQTY
+    OK=2 : Call AVERTIR(mess(87,194,1),OK) From GESECRAN
+    If OK=1 mkstat=1 : [M:PPI1]TOTQTY=0 : FIN=1 : Return : Endif
+  Endif
+Endif
+#----- Prise en compte des besoins à partir des DL -----#
+If clalev([M:POD1])
+  nolign=SAVNOLIGN
+  Default Mask [POD1]
+  Gosub INSERTION_BESOIN From SUBPOD
+  If ASFLG=1 : # Appel en avant saisie de la période demande
+    If SAVNBLIG=[M:POD1]NBLIG-1 [M:POD1]NBLIG-=1 : Endif
+    VALEUR=[M:POD1]WRCPDAT(NOL)
+    [M:POD1]CTLPOHCOU=[M:POD1]POHLIN(NOL)
+    Raz mkstat, GMESSAGE : FIN=1
+    Return
+  Endif
+Endif
+#-----
+mkstat=4 : FIN=1
+Return
+#-------------------------------------#
+# Après l'exécution du bouton ABANDON #
+#-------------------------------------#
+$ABA_SAIPECB4
+Gosub DEB_SAIPECB4
+Raz REP
+Return
+#-------------------------------#
+# Grisage/dégrisage des boutons #
+#-------------------------------#
+$SETB_SAIPECB4
+If [M:PPI1]TOTQTY=0
+  ETABOU(GVALI)=0 : # Désactivation OK
+Else
+  ETABOU(GVALI)=1 : # Activation OK
+Endif
+Return
+#------------------------------------------#
+# Avant de revenir à la fenêtre précédente #
+#------------------------------------------#
+$FSA_SAIPECB4
+nolign=SAVNOLIGN
+If WRETOUR=0 & ASFLG<>1 GMESSAGE=mess(96,194,1) : GERR=2 : Endif
+Return
+
+########################################################################
+#-----------------------------------#
+# Sélection d'une ligne de commande #
+#-----------------------------------#
+$PICKE_CDE
+SAVNBLIG=nolign
+WNUM=[F:POQ]POHNUM : WPOQLNK=[F:POQ]POQLNK
+Read [POQ] POQ3=WNUM;WPOQLNK  : If fstat Raz [F:POQ] : Endif
+If WDEBPICK | [F:POH]POHNUM<>[F:POQ]POHNUM
+  Read [POH] POH0=[F:POQ]POHNUM : If fstat Raz [F:POH] : Endif
+Endif
+#-----
+If [F:POH]POHNUM="" & [F:POQ]ITMREF=""
+  Call RSTA("XPOQ",WNUM-WPOQLNK) From GLOCK
+  OK=0 : Return
+Endif
+
+# Issue 106538 - 2015-06-04 by SR : Landed Cost
+#If !evalue(FILGAUSUP)  OK=0 : Return : Endif
+If !GIMPORT & !evalue(FILGAUSUP)  OK=0 : Return : Endif
+#-----
+If [F:POQ]LINTYP=2
+  If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-2  OK=0 : Return : Endif
+Else
+  If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-4  OK=0 : Return : Endif
+Endif
+#----- Lecture des autres tables liées au picking -----#
+Gosub LECFIC_PICKE_CDE
+#----- Contrôle période comptable si article non géré en stock -----#
+If [F:ITF]STOMGTCOD<2
+  If WERR=0
+    Call CTLPER([M:PTH0]PRHFCY,[M:PTH0]RCPDAT) From TRTACHCTL1
+    If mkstat
+      Call ERREUR(GMESSAGE) From GESECRAN : Raz GMESSAGE, mkstat
+      WERR=1 : OK=0 : Return
+    Else
+      WERR=2
+    Endif
+  Elsif WERR=1
+    OK=0 : Return
+  Endif
+Endif
+#----- Si inter-sites avec correspondance dans les ventes -----#
+If [F:POH]SALFCY<>""
+  If [F:SOQ]SDHNUM =""
+    If [F:POH]POHTYP=2
+      GERR=1 : GMESSAGE=mess(216,194,1) : OK=0 : Return
+    Else
+      GERR=1 : GMESSAGE=mess(278,194,1) : OK=0 : Return
+    Endif
+  Endif
+  If [F:SDH]CFMFLG<>2
+    GERR=1 : GMESSAGE=mess(216,194,1) : OK=0 : Return
+  Endif
+  If [F:SDD]RCPFLG=2
+    GERR=1 : GMESSAGE=mess(277,194,1) : OK=0 : Return
+  Endif
+Endif
+#----- Interdire la même ligne commande pour article sous-traitance ou sous-traité -----#
+# Issue 83096 - 2012-07-25 by MUARN : article sous-traité possible de picker plusieurs lignes
+#If [F:ITM]SCSFLG=2 | [F:ITM]SCPFLG=2
+# Issue 95496 GA 02/2014 Contrôle remis mais test différent pour ne pas bloquer les articles pouvant être sous-traités
+#If [F:ITM]SCSFLG=2
+If find([F:POQ]VCRTYPORI,10,36) & find([F:POQ]LINTYP,1,2)
+  If sigma(I=0,[M:PTH1]NBLIG-1,([M:PTH1]POHNUM(I)=WNUM & [M:PTH1]POPLIN(I)=[F:POQ]POPLIN))>0
+    GMESSAGE=mess(134,194,1) : GERR=1 : OK=0 : Return
+  Endif
+Endif
+#-----
+# Issue 71069 - 2013-08-23 by SR : PJT
+#Code affaire à la ligne (Partie : rajout paramètre société pour contrôle documents mono-affaire)
+#--Contrôles sur le code affaire de la commande
+If [M:PTH1]NBLIG<1 & [M:PTH0]PJTH = "" & GPJTSNGDOC = 2
+   [M:PTH0]PJTH = [F:POP]PJT
+   If func TRTPJT.IS_PJT_AVAILABLE([F:POP]PJT, "[M:PTH0]PJTH", SWPJTMSG) = G_NON Then
+      Call PJT_ADD_MSG([F:POP]PJT, SWPJTMSG) From TRTPJT
+      OK = 0 : GERR = 1 : : GMESSAGE = SWPJTMSG
+      Raz [M:PTH0]PJTH
+      Return
+   Else
+      If !GIMPORT : Affzo [M:PTH0]PJTH : Endif
+   Endif
+Else
+   If func TRTPJT.IS_PJT_AVAILABLE([F:POP]PJT, "[M:PTH1]PJT", SWPJTMSG) = G_NON Then
+      Call PJT_ADD_MSG([F:POP]PJT, SWPJTMSG) From TRTPJT
+      OK = 0 : GERR = 1 : GMESSAGE = SWPJTMSG
+      Return
+   Endif
+Endif
+
+# Fin Issue 71069 - 2013-08-23 by SR
+# Issue 106506 - 2015-06-11 by SR : Ligne dans un container non encore expédié
+# Issue 110893 - 2015-09-10 by SR : Container sans numéro d'expédition
+If [F:POQ]SHIQTYSTU = 0
+   Filter [F:CTRD] Where POHNUM = [F:POQ]POHNUM & POPLIN = [F:POQ]POPLIN & POQSEQ = [F:POQ]POQSEQ
+&                      & SHIPNUM = ""
+   Look [F:CTRD] First With Nohint
+   Filter [F:CTRD]
+   If !fstat
+     GMESSAGE = mess(524,194,1)
+     GERR = 1
+     OK = 0
+     Return
+   Endif
+Endif
+# End issue 110893
+
+WDEBPICK=0
+
+#----- Calcul de la quantité restante à réceptionner -----#
+# Issue 106506 - 2015-04-21 by SR : Landed Cost
+# Issue 108538 - 2015-06-05 by SR : Landed Cost : ne pas faire référence à currbox
+If [F:POQ]SHIQTYSTU = 0
+   WQTE=[F:POQ]QTYSTU-[F:POQ]RCPQTYSTU
+   # Issue 110697 - 2015-09-01 by SR : Uniquement dans le cas d'un picking sur commande
+   WQTE-=sigma(I=0,[M:PTH1]NBLIG-1,[M:PTH1]QTYSTU(I)*([M:PTH1]POHNUM(I)=[F:POQ]POHNUM &
+&                                                  [M:PTH1]POPLIN(I)=[F:POQ]POPLIN &
+&                                                  [M:PTH1]POQSEQ(I)=[F:POQ]POQSEQ &
+&                                                  [M:PTH1]CREFLG(I)=0))
+Else
+  If [F:SHD]PRCPQTYSTU <> 0
+      WQTE = [F:SHD]PRCPQTYSTU - [F:SHD]RCPQTYSTU
+  Else
+      WQTE = [F:SHD]SHIQTYSTU - [F:SHD]RCPQTYSTU
+  Endif
+Endif
+# End issue 106506
+
+# Issue 110697 - 2015-09-01 by SR : Lignes déplacées car ne concernent que le picking sur commande
+#WQTE-=sigma(I=0,[M:PTH1]NBLIG-1,[M:PTH1]QTYSTU(I)*([M:PTH1]POHNUM(I)=[F:POQ]POHNUM &
+#&                                                  [M:PTH1]POPLIN(I)=[F:POQ]POPLIN &
+#&                                                  [M:PTH1]POQSEQ(I)=[F:POQ]POQSEQ &
+#&                                                  [M:PTH1]CREFLG(I)=0))
+If WQTE<0  Raz WQTE : Endif
+#----- Quantité à réceptionner nulle -----#
+If WQTE=0
+  GMESSAGE=[F:POQ]POHNUM-[F:POQ]ITMREF+"\"+mess(201,194,1)
+  OK=2 : Call OUINON (GMESSAGE,OK) From GESECRAN : Raz GMESSAGE
+  If OK<>2  OK=0 : Return : Endif
+Endif
+#----- Vérification fournisseur -----#
+If [M:PTH0]BPSNUM="" | [M:PTH0]BPSNUM<>[M:PCOW]WBPSNUM
+  WPICK=9
+  [M:PTH0]BETFCY=[F:POH]BETFCY
+  [M:PTH0]BPSNUM=[F:POQ]BPSNUM
+  Call AM_BPSNUM([M:PTH0]BPSNUM) From SUBPTH
+  If mkstat
+    Raz [M:PTH0]BPSNUM, [M:PCOW]WBPSNUM, [M:PTH0]SALFCY, [M:PTH0]BETFCY, [M:PTH0]BETCPY
+    Raz WPICK
+    OK=0 : Return
+  Endif
+Elsif [F:POQ]BPSNUM<>[M:PTH0]BPSNUM
+  GMESSAGE=mess(195,194,1)-[M:PCOW]WBPSNUM : GERR=1
+  OK=0 : Return
+Elsif [M:PTH1]NBLIG=0 & [M:PTH0]BETFCY<>[F:POH]BETFCY
+  [M:PTH0]BETFCY=[F:POH]BETFCY
+  Call AM_BETFCY([M:PTH0]BETFCY) From SUBPTH
+Endif
+#----- Blocage logique de la commande si nouvelle commande -----#
+If !find([F:POQ]POHNUM,[M:PTH1]POHNUM(0..[M:PTH1]NBLIG-1))
+  SYMBOLE2="POH"+[F:POQ]POHNUM : Lock=SYMBOLE2
+  If fstat
+    GMESSAGE="$PORDER"-[F:POQ]POHNUM-mess(10,100,1) : GERR=1 : OK=0 : Return
+  Endif
+Endif
+
+#----- Particularité pour sous-traitance -----#
+If [F:POQ]LINTYP=2
+  WPOQLNK   =[F:POQ]POQLNK
+  WVCRTYPORI=[F:POQ]VCRTYPORI
+  WVCRNUMORI=[F:POQ]VCRNUMORI
+  Raz OK
+  For [POQ] POQ3 Where POHNUM   =WNUM
+&                    & POQLNK  >=WPOQLNK
+&                    & VCRTYPORI=WVCRTYPORI
+&                    & VCRNUMORI=WVCRNUMORI
+    If [F:POQ]LINTYP<3 & OK  Break : Endif
+    If [F:POQ]LINTYP=2
+      WQTYSTU=WQTE
+      OK=1
+    Else
+      If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-2  mkstat=1 : Break : Endif
+      Gosub LECFIC_PICKE_CDE
+      #If [F:POQ]LIKQTYCOE<>0
+        #----- Calcul de la quantité restante à réceptionner -----#
+        WQTE=[F:POQ]QTYSTU-[F:POQ]RCPQTYSTU
+        WQTE-=sigma(I=0,[M:PTH1]NBLIG-1,
+&                   [M:PTH1]QTYSTU(I)*([M:PTH1]POHNUM(I)=[F:POQ]POHNUM &
+&                                      [M:PTH1]POPLIN(I)=[F:POQ]POPLIN &
+&                                      [M:PTH1]POQSEQ(I)=[F:POQ]POQSEQ &
+&                                      [M:PTH1]CREFLG(I)=0))
+        If WQTE<0  Raz WQTE : Endif
+        #If abs(WQTE-(WQTYSTU*[F:POQ]LIKQTYCOE))>0.1
+        #  WQTE=WQTYSTU*[F:POQ]LIKQTYCOE
+        #  Call QTEARR(WQTE,[F:POQ]STU) From TRTDIV
+        #Endif
+      #Else
+      #  WQTE=[F:POQ]QTYSTU
+      #Endif
+    Endif
+    [F:POQ]PTHNUM=[M:PTH0]PTHNUM : # Pour éviter un écrasement par le transclasse
+    I=[M:PTH1]NBLIG : nolign=I+1
+    [M:PTH1]ITMREF(nolign-1)=[F:POQ]ITMREF
+    Gosub CHARG_LIG_PTH From SUBPTHB
+    If !mkstat
+      status=0 : Call LINNUM("PTDLIN") From TABLEAUX
+      [M:PTH1]NBLIG+=1 : Call APRES_NBLIG From SUBPTH
+    Else
+      Break
+    Endif
+  Next
+  OK=1
+#----- Lignes classiques (autres que sous-traitance) -----#
+Else
+
+  [F:POQ]PTHNUM=[M:PTH0]PTHNUM : # Pour éviter un écrasement par le transclasse
+  I=[M:PTH1]NBLIG : nolign=I+1
+  [M:PTH1]ITMREF(nolign-1)=[F:POQ]ITMREF
+  Gosub CHARG_LIG_PTH From SUBPTHB
+ # Issue 110325 - 2015-12-03 by SR : SDC sur Expéditions, zones attendues dans ALIM_STCP
+    #auren [M:PTH1]ZSHIPNUM(nolign-1)      = [F:SHD]SHIPNUM
+    #auren [M:PTH1]ZSHIPLIN(nolign-1)      = [F:SHD]SHIPLIN
+  If [F:POQ]SHIQTYSTU <> 0
+     [M:PTH1]SHIPNUM(nolign-1)      = [F:SHD]SHIPNUM
+     [M:PTH1]SHIPLIN(nolign-1)      = [F:SHD]SHIPLIN
+  Endif
+  # End issue 110325
+  If !mkstat
+    status=0 : Call LINNUM("PTDLIN") From TABLEAUX
+    [M:PTH1]NBLIG+=1 : Call APRES_NBLIG From SUBPTH
+  Endif
+Endif
+#-----
+If mkstat
+  Raz [M:PTH1]ITMREF(nolign-1)
+  If WPICK=9 & [M:PTH1]NBLIG=0
+    Raz [M:PTH0]BPSNUM, [M:PCOW]WBPSNUM, [M:PTH0]SALFCY, [M:PTH0]BETFCY, [M:PTH0]BETCPY
+    Raz WPICK
+  Endif
+  If !find([F:POQ]POHNUM,[M:PTH1]POHNUM(0..[M:PTH1]NBLIG-1))
+    SYMBOLE2="POH"+[F:POQ]POHNUM : Unlock=SYMBOLE2
+  Endif
+  If WERR<>1  Call ERREUR(GMESSAGE) From GESECRAN : WERR=1 : Endif
+  Raz GMESSAGE, GERR
+  OK=0 : Return
+Endif
+#PICFLG=1
+
+#--- Bug 62980
+#--- Contrôle date entrée par rapport aux dates mouvements en attente
+If [M]STOMGTCOD(nolign-1)>1
+  Local Date    LDATRUP
+  Local Decimal LQTYRUP
+  # Issue 66759 - 2010-08-19 by CCC : A ce niveau, PTH0 ne fait plus partie des masques par défaut si réception de sous-traitance
+  #   => il faut préciser l'abréviation
+  Call CTLRUP([M:PTH0]PRHFCY,[M:PTH1]ITMREF(nolign-1),[M:PTH0]RCPDAT,1,LDATRUP,LQTYRUP) From STKLIB
+Endif
+#---
+
+Return
+
+#-------------------------------------#
+# Déselection d'une ligne de commande #
+#-------------------------------------#
+$DEPICK_CDE
+WNUM=[F:POQ]POHNUM : WPOQLNK=[F:POQ]POQLNK
+Read [POQ] POQ3=WNUM;WPOQLNK  : If fstat Raz [F:POQ] : Endif
+If WDEBPICK | [F:POH]POHNUM<>[F:POQ]POHNUM
+  Read [POH] POH0=[F:POQ]POHNUM : If fstat Raz [F:POH] : Endif
+Endif
+If [F:POH]POHNUM="" & [F:POQ]ITMREF=""
+  Call RSTA("XPOQ",WNUM-WPOQLNK) From GLOCK
+  OK=0 : Return
+Endif
+WDEBPICK=0
+#----- Particularité pour sous-traitance -----#
+If [F:POQ]LINTYP=2
+  WPOQLNK   =[F:POQ]POQLNK
+  WVCRTYPORI=[F:POQ]VCRTYPORI
+  WVCRNUMORI=[F:POQ]VCRNUMORI
+  Raz OK
+  For [POQ] POQ3 Where POHNUM   =WNUM
+&                    & POQLNK  >=WPOQLNK
+&                    & VCRTYPORI=WVCRTYPORI
+&                    & VCRNUMORI=WVCRNUMORI
+    If [F:POQ]LINTYP<3 & OK  Break : Endif
+    If [F:POQ]LINTYP=2       OK=1  : Endif
+    Gosub RECHSUP_LIG_CDE : # Recherche et suppression ligne
+  Next
+  OK=1
+#----- Lignes classiques (autres que sous-traitance) -----#
+Else
+  Gosub RECHSUP_LIG_CDE   : # Recherche et suppression ligne
+Endif
+#----- Suppression éventuelle sélection fournisseur -----#
+If [M:PTH1]NBLIG=0 & [M:PTH0]BPSNUM=""  [M:PCOW]WBPSNUM="" : Endif
+#----- Chargement des infos complémentaires venant de la commande si nécessaire -----#
+Gosub TEST_INFOS_COMPL From SUBPTHB
+# Issue 95496 - 2014-02-26 by CCC : unlock already done in RECHSUP_LIG_CDE
+#   #----- Ctrl des locks en cas de sous-traitance -----#
+#    Gosub UNLOCK_SCO From SUBPTHC  # Issue 89758 GA 12/2013 unlock WO or EO
+Return
+
+########################################################################
+#------------------------------------#
+# Sélection d'une ligne de livraison #
+#------------------------------------#
+$PICKE_LIV
+#----- Variables locales à créer si nécessaire (appel depuis l'import ...etc) -----#
+If dim(SAVNBLIG)<1  Local Shortint SAVNBLIG      : Endif
+If dim(WPICK)<1     Local Shortint WPICK         : Endif
+If dim(WNUM)<1      Local Char     WNUM(GLONPOH) : Endif
+If dim(SYMBOLE2)<1  Local Char     SYMBOLE2(30)  : Endif
+If dim(WLIN)<1      Local Integer  WLIN          : Endif
+If dim(WQTE)<1      Local Decimal  WQTE          : Endif
+If dim(WDEBPICK)<1  Local Libelle  WDEBPICK      : Endif
+#-----
+WNUM=[F:SDD]SDHNUM : WLIN=[F:SDD]SDDLIN
+Read [SDD] SDD0=WNUM;WLIN     : If fstat Raz [F:SDD] : Endif
+If WDEBPICK | [F:SDH]SDHNUM<>[F:SDD]SDHNUM
+  Read [SDH] SDH0=[F:SDD]SDHNUM : If fstat Raz [F:SDH] : Endif
+Endif
+#-----
+If [F:SDH]SDHNUM="" & [F:SDD]ITMREF=""
+  If !GIMPORT Call RSTA("XSDD",WNUM-num$(WLIN)) From GLOCK : Endif
+  OK=0 : Return
+Endif
+If !GIMPORT & !evalue(FILGAUSUP)  OK=0 : Return : Endif
+# Issue 122601 - 2017-04-24 by SR : contrôler que la livraison est validée
+If GIMPORT
+  If [F:SDH]CFMFLG <> 2
+    # Livraison non validée
+    Call ERREUR([F:SDH]SDHNUM - ":"- mess(441,197,1)) From GESECRAN
+    mkstat = 1 : Return
+  Endif
+Endif
+# End issue 122601
+#-----
+# Issue 103942 - 2014-11-13 by SR : Lignes déplacées après lecture de SDD
+# Issue 99540 - 2014-05-16 by SR : L'article est-il réceptionnable ?
+If [F:ITM]ITMREF <> [F:SDD]ITMREF
+   Read [F:ITM]ITM0 = [F:SDD]ITMREF
+   If fstat : Raz [F:ITM] : Endif
+Endif
+If [F:ITM]RCPFLG <> 2
+   Call ERREUR(mess(472,194,1)) From GESECRAN : Raz GMESSAGE, mkstat
+   WERR=1 : OK=0 : Return
+Endif
+# End issue 99540
+# End issue 103942
+
+If [F:SDD]LINTYP=10
+  If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-2  OK=0 : Return : Endif
+Else
+  If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-4  OK=0 : Return : Endif
+Endif
+#----- Lecture des autres tables liées au picking -----#
+Gosub LECFIC_PICKE_LIV
+#----- Contrôle période comptable si article non géré en stock -----#
+If [F:ITF]STOMGTCOD<2
+  If WERR=0
+    Call CTLPER([M:PTH0]PRHFCY,[M:PTH0]RCPDAT) From TRTACHCTL1
+    If mkstat
+      Call ERREUR(GMESSAGE) From GESECRAN : Raz GMESSAGE, mkstat
+      WERR=1 : OK=0 : Return
+    Else
+      WERR=2
+    Endif
+  Elsif WERR=1
+    OK=0 : Return
+  Endif
+#----- Si article géré en stock, l'article-site doit exister -----#
+Elsif [F:POQ]POHNUM="" & [F:ITF]ITMREF=""
+  GMESSAGE=[F:SDD]ITMREF-[M:PTH0]PRHFCY-mess(25,192,1)
+  GERR=1 : OK=0 : Return
+Endif
+#-----
+If [F:SOQ]SOHNUM<>"" & [F:SOQ]POHNUM<>"" & [F:POQ]POHNUM=""
+  If [F:SOQ]SOHCAT=4
+    GMESSAGE=mess(215,194,1) : GERR=1 : OK=0 : Return
+  Elsif [F:SOQ]SOHCAT=1
+    GMESSAGE=mess(274,194,1) : GERR=1 : OK=0 : Return
+  Endif
+Endif
+#----- Interdire la même ligne livraison -----#
+If sigma(I=0,[M:PTH1]NBLIG-1,([M:PTH1]SDHNUM(I)=[F:SDD]SDHNUM & [M:PTH1]SDDLIN(I)=[F:SDD]SDDLIN))>0
+  GMESSAGE=mess(296,194,1) : GERR=1 : OK=0 : Return
+Endif
+
+# Issue 71069 - 2016-05-24 by MUARN : pas de contrôle en inter-soc PJT non récupéré
+# Issue 71069 - 2013-08-23 by SR : PJT
+#Code affaire à la ligne (Partie : rajout paramètre société pour contrôle documents mono-affaire)
+#--Contrôles sur le code affaire de la livraison
+If [M:PTH0]BETCPY=1
+  If [M:PTH1]NBLIG<1 & [M:PTH0]PJTH = "" & GPJTSNGDOC = 2
+     [M:PTH0]PJTH = [F:SDD]PJT
+     If func TRTPJT.IS_PJT_AVAILABLE([F:SDD]PJT, "[M:PTH0]PJTH", SWPJTMSG) = G_NON Then
+        Call PJT_ADD_MSG([F:SDD]PJT, SWPJTMSG) From TRTPJT
+        OK = 0 : GERR = 1 : GMESSAGE = SWPJTMSG
+        Raz [M:PTH0]PJTH
+        Return
+     Else
+        If !GIMPORT : Affzo [M:PTH0]PJTH : Endif
+     Endif
+  Else
+     If func TRTPJT.IS_PJT_AVAILABLE([F:SDD]PJT, "[M:PTH1]PJT", SWPJTMSG) = G_NON Then
+        Call PJT_ADD_MSG([F:SDD]PJT, SWPJTMSG) From TRTPJT
+        OK = 0 : GERR = 1 : GMESSAGE = SWPJTMSG
+        Return
+     Endif
+  Endif
+Endif
+# Fin Issue 71069 - 2013-08-23 by SR
+#-----
+WDEBPICK=0
+#----- Calcul de la quantité restante à réceptionner -----#
+WQTE=max([F:SDD]QTYSTU-[F:SDD]RTNQTYSTU-[F:SDD]RCPQTYSTU,0)
+#----- Quantité à réceptionner nulle -----#
+If WQTE=0
+  GMESSAGE=[F:SDH]SDHNUM-[F:SDD]ITMREF+"\"+mess(202,194,1)
+  GERR=1 : OK=0 : Return
+Endif
+#----- Vérification fournisseur -----#
+If [M:PTH0]BPSNUM="" | [M:PTH0]BPSNUM<>[M:PCOW]WBPSNUM
+  WPICK=9
+  #-- Ici on a une commande le fournisseur vient de la commande
+  If [F:POQ]BPSNUM <>""
+    [M:PTH0]BPSNUM=[F:POQ]BPSNUM : [M:PCOW]WBPSNUM=[F:POQ]BPSNUM
+    If [F:BPR]BPRNUM<>[F:POQ]BPSNUM
+      Read [BPR] BPR0=[F:POQ]BPSNUM : If fstat Raz [F:BPR] : Endif
+    Endif
+  Else
+  #-- On n'a pas de commande, le fournisseur correspond au site de vente de la livraison
+    Read [BPR] BPR2(2)=2;[F:SDH]SALFCY
+    If fstat  Raz [F:BPR] : Endif
+    [G:BPR]currind=1 : [G:BPR]currlen=0 : # Réinitialisation clé par défaut
+    If [F:BPR]BPRNUM="" | [F:BPR]BPSFLG<>2
+      GMESSAGE=[F:SDH]SALFCY-mess(239,197,1) : GERR=1 : OK=0 : Return
+    Else
+      [M:PTH0]BPSNUM=[F:BPR]BPRNUM : [M:PCOW]WBPSNUM=[F:BPR]BPRNUM
+    Endif
+  Endif
+  [M:PTH0]BETFCY=[F:SDH]BETFCY
+  Call AM_BPSNUM([M:PTH0]BPSNUM) From SUBPTH
+  If mkstat
+    Raz [M:PTH0]BPSNUM, [M:PCOW]WBPSNUM, [M:PTH0]SALFCY, [M:PTH0]BETFCY, [M:PTH0]BETCPY
+    Raz WPICK
+    OK=0 : Return
+  Endif
+Elsif [F:POQ]BPSNUM<>[M:PTH0]BPSNUM & [F:POQ]POHNUM<>""
+  GMESSAGE=mess(195,194,1)-[M:PCOW]WBPSNUM : GERR=1 : OK=0 : Return
+Else
+  If [F:POQ]POHNUM=""
+    #-- Recherche du fournisseur lié au site d'expédition
+    Filter [BPR] Where BETFCY=2 & FCY=[F:SDH]SALFCY & BPSFLG=2
+    Read [BPR] BPR2 First
+    Filter [BPR]
+    If fstat
+      GMESSAGE=[F:SDH]SALFCY-mess(239,197,1)   : GERR=1 : OK=0 : Return
+    Elsif [M:PTH0]BPSNUM<>[F:BPR]BPRNUM
+      GMESSAGE=mess(195,194,1)-[M:PCOW]WBPSNUM : GERR=1 : OK=0 : Return
+    Endif
+  Endif
+  If [M:PTH1]NBLIG=0 & [M:PTH0]BETFCY<>[F:SDH]BETFCY
+    [M:PTH0]BETFCY=[F:SDH]BETFCY
+    Call AM_BETFCY([M:PTH0]BETFCY) From SUBPTH
+  Endif
+Endif
+#----- Ici on est bon on peut locker ! -----#
+If !find([F:SDD]SDHNUM,[M:PTH1]SDHNUM(0..[M:PTH1]NBLIG-1))
+  SYMBOLE2="SDH"+[F:SDD]SDHNUM : Lock=SYMBOLE2
+  If fstat
+    GMESSAGE="$SDELIVERY"-[F:SDH]SDHNUM-mess(10,100,1) : GERR=1 : OK=0 : Return
+  Endif
+Endif
+#----- Blocage logique de la commande si nouvelle commande -----#
+If [F:POQ]POHNUM<>""
+  If !find([F:POQ]POHNUM,[M:PTH1]POHNUM(0..[M:PTH1]NBLIG-1))
+    SYMBOLE2="POH"+[F:POQ]POHNUM : Lock=SYMBOLE2
+    If fstat
+      GMESSAGE="$PORDER"-[F:POQ]POHNUM-mess(10,100,1) : GERR=1 : OK=0 : Return
+    Endif
+  Endif
+Endif
+#----- Particularité pour sous-traitance -----#
+If [F:SDD]LINTYP=10
+  WVCRTYPORI=[F:SDD]VCRTYPORI
+  WVCRNUMORI=[F:SDD]VCRNUMORI
+  Raz OK
+  For [SDD] SDD0 Where SDHNUM   =WNUM
+&                    & SDDLIN  >=WLIN
+&                    & VCRTYPORI=WVCRTYPORI
+&                    & VCRNUMORI=WVCRNUMORI
+    If [F:SDD]LINTYP<11 & OK  Break : Endif
+    If [F:SDD]LINTYP=10
+      WQTYSTU=WQTE
+      OK=1
+    Else
+      If [M:PTH1]NBLIG>dim([M:PTH1]ITMREF)-2  mkstat=1 : Break : Endif
+      Gosub LECFIC_PICKE_LIV
+      If [F:POQ]LIKQTYCOE<>0
+        WQTE=WQTYSTU*[F:POQ]LIKQTYCOE
+        Call QTEARR(WQTE,[F:SDD]STU) From TRTDIV
+      Else
+        WQTE=[F:SDD]QTYSTU
+      Endif
+    Endif
+    [F:POQ]PTHNUM=[M:PTH0]PTHNUM : # Pour éviter un écrasement par le transclasse
+    I=[M:PTH1]NBLIG : nolign=I+1
+    [M:PTH1]ITMREF(nolign-1)=[F:SDD]ITMREF
+    Gosub CHARG_LIG_PTH From SUBPTHB
+    If !mkstat
+      status=0 : Call LINNUM("PTDLIN") From TABLEAUX
+      [M:PTH1]NBLIG+=1 : Call APRES_NBLIG From SUBPTH
+    Else
+      Break
+    Endif
+  Next
+  OK=1
+#----- Lignes classiques (autres que sous-traitance) -----#
+Else
+  [F:POQ]PTHNUM=[M:PTH0]PTHNUM  : # Pour éviter un écrasement par le transclasse
+  I=[M:PTH1]NBLIG : nolign=I+1
+  [M:PTH1]ITMREF(nolign-1)=[F:SDD]ITMREF
+  Gosub CHARG_LIG_PTH From SUBPTHB
+  If !mkstat
+    status=0 : Call LINNUM("PTDLIN") From TABLEAUX
+    [M:PTH1]NBLIG+=1 : Call APRES_NBLIG From SUBPTH
+  Endif
+Endif
+#-----
+If mkstat
+  Raz [M:PTH1]ITMREF(nolign-1)
+  If WPICK=9 & [M:PTH1]NBLIG=0
+    Raz [M:PTH0]BPSNUM, [M:PCOW]WBPSNUM, [M:PTH0]SALFCY, [M:PTH0]BETFCY, [M:PTH0]BETCPY
+    Raz WPICK
+  Endif
+  If !find([F:SDD]SDHNUM,[M:PTH1]SDHNUM(0..[M:PTH1]NBLIG-1))
+    SYMBOLE2="SDH"+[F:SDD]SDHNUM : Unlock=SYMBOLE2
+  Endif
+  If !find([F:POQ]POHNUM,[M:PTH1]POHNUM(0..[M:PTH1]NBLIG-1))
+    SYMBOLE2="POH"+[F:POQ]POHNUM : Unlock=SYMBOLE2
+  Endif
+  If WERR<>1  Call ERREUR(GMESSAGE) From GESECRAN : WERR=1 : Endif
+  Raz GMESSAGE, GERR
+  OK=0 : Return
+Endif
+#PICFLG=1
+Return
+
+#--------------------------------------#
+# Déselection d'une ligne de livraison #
+#--------------------------------------#
+$DEPICK_LIV
+WNUM=[F:SDD]SDHNUM : WLIN=[F:SDD]SDDLIN
+Read [SDD] SDD0=WNUM;WLIN  : If fstat Raz [F:SDD] : Endif
+If WDEBPICK | [F:SDH]SDHNUM<>[F:SDD]SDHNUM
+  Read [SDH] SDH0=[F:SDD]SDHNUM : If fstat Raz [F:SDH] : Endif
+Endif
+If [F:SDH]SDHNUM="" & [F:ITM]ITMREF=""
+  Call RSTA("XSDD",WNUM-num$(WLIN)) From GLOCK
+  OK=0 : Return
+Endif
+WDEBPICK=0
+#----- Particularité pour sous-traitance -----#
+If [F:SDD]LINTYP=10
+  WVCRTYPORI=[F:SDD]VCRTYPORI
+  WVCRNUMORI=[F:SDD]VCRNUMORI
+  Raz OK
+  For [SDD] SDD0 Where SDHNUM   =WNUM
+&                    & SDDLIN  >=WLIN
+&                    & VCRTYPORI=WVCRTYPORI
+&                    & VCRNUMORI=WVCRNUMORI
+    If [F:SDD]LINTYP<11 & OK  Break : Endif
+    If [F:SDD]LINTYP=10       OK=1  : Endif
+    Gosub RECHSUP_LIG_LIV : # Recherche et suppression ligne
+  Next
+  OK=1
+#----- Lignes classiques (autres que sous-traitance) -----#
+Else
+  Gosub RECHSUP_LIG_LIV   : # Recherche et suppression ligne
+Endif
+#----- Suppression éventuelle sélection fournisseur -----#
+If [M:PTH1]NBLIG=0  & [M:PTH0]BPSNUM=""
+  Raz [M:PCOW]WBPSNUM, [M:PTH0]SALFCY
+Endif
+#----- Traitement de la zone "BL fournisseur" -----#
+Gosub TRT_BPSNDE From SUBPTH
+#----- Chargement des infos complémentaires venant de la commande si nécessaire -----#
+Gosub TEST_INFOS_COMPL From SUBPTHB
+# Issue 95496 - 2014-02-26 by CCC : unlock already done in RECHSUP_LIG_LIV
+##----- Ctrl des locks en cas de sous-traitance -----#
+#Gosub UNLOCK_SCO From SUBPTHC # Issue 89758 GA 12/2013 unlock WO or EO
+Return
+
+
+# Issue 106506 - 2015-04-21 by SR : Landed Cost
+########################################################################
+#-----------------------------------#
+# Sélection d'une ligne de Shipment #
+#-----------------------------------#
+$PICKE_SHIP
+
+########
+
+# Issue 108538 - 2015-06-05 by SR : Landed Cost
+#----- Variables locales à créer si nécessaire (appel depuis l'import ...etc) -----#
+If dim(SAVNBLIG)<1  Local Shortint SAVNBLIG      : Endif
+If dim(WPICK)<1     Local Shortint WPICK         : Endif
+If dim(WNUM)<1      Local Char     WNUM(GLONPOH) : Endif
+If dim(SYMBOLE2)<1  Local Char     SYMBOLE2(30)  : Endif
+If dim(WLIN)<1      Local Integer  WLIN          : Endif
+If dim(WQTE)<1      Local Decimal  WQTE          : Endif
+If dim(WDEBPICK)<1  Local Libelle  WDEBPICK      : Endif
+#-----
+WNUM=[F:SHD]SHIPNUM : WLIN=[F:SHD]SHIPLIN
+Read [SHD] SHD0=WNUM;WLIN     : If fstat Raz [F:SHD] : Endif
+If WDEBPICK | [F:SHH]SHIPNUM<>[F:SHD]SHIPNUM
+  Read [SHH] SHH0=[F:SHD]SHIPNUM : If fstat Raz [F:SHH] : Endif
+Endif
+#-----
+If [F:SHH]SHIPNUM="" & [F:SHD]ITMREF=""
+   # Issue 110984 - 2015-09-14 by SR
+  If !GIMPORT & !GWEBSERV
+      Call RSTA("XSHD",WNUM-num$(WLIN)) From GLOCK
+      OK=0
+  Else
+      GMESSAGE = WNUM- num$(WLIN) -":" -mess(532,194,1) # Expédition inexistante
+      GERR = 1
+      mkstat = 2
+  Endif
+  Return
+Endif
+# possible en import ou en Web service
+If  [F:SHD]CLEFLG = 2
+    GMESSAGE = WNUM- num$(WLIN) -":" -mess(533,194,1) # Expédition soldée
+    GERR = 1
+    mkstat = 2
+    Return
+Endif
+# End issue 110984
+If !GIMPORT & !GWEBSERV & !evalue(FILGAUSUP)  OK=0 : Return : Endif
+# End issue 108538
+
+Read [F:POQ]POQ0 = [F:SHD]POHNUM;[F:SHD]POPLIN;[F:SHD]POQSEQ
+If fstat : Raz [F:POQ] : Endif
+Read [F:POH]POH0 = [F:POQ]POHNUM
+If fstat : Raz [F:POH] : Endif
+#
+Gosub PICKE_CDE
+#
+If OK <> 0
+# Issue 110325 - 2015-12-03 by SR : Lignes déplacées dans PICKE_CDE
+#  [M:PTH1]SHIPNUM(nolign-1)      = [F:SHD]SHIPNUM
+#  [M:PTH1]SHIPLIN(nolign-1)      = [F:SHD]SHIPLIN
+# End issue 110325
+# Issue 113250 - 2015-12-17 by SR
+  [M:PTH1]QTYVOU(nolign-1)       = [F:SHD]QTYVOU
+  [M:PTH1]QTYWEU(nolign-1)       = [F:SHD]QTYWEU
+# End issue 113250
+  # Issue 110505 - 2015-08-24 by SR : Erreur sur le nom de la zone
+  [M:PTH1]SHDQTYSTU(nolign-1)    = 0
+  [M:PTH1]WSHDSOLDE(nolign-1)    = 2
+  # Recalculer les poids et volume si qté de la réception <> qté expédiée
+  If [M:PTH1]QTYSTU(NOL) <> [F:SHD]SHIQTYSTU
+   If [F:ITM]ITMREF<>[M:PTH1]ITMREF(nolign-1)
+      Read [ITM] ITM0=[M:PTH1]ITMREF(nolign-1) : If fstat  Raz [F:ITM] : Endif
+   Endif
+   Call CONVERT_VOUWEU("PTH1",nolign-1,[M:PTH1]LINWEU(nolign-1),[M:PTH1]LINVOU(nolign-1),[M:PTH1]QTYSTU(NOL),[F:SHD]SHIQTYSTU) From STCLIB
+  Endif
+Endif
+Return
+
+#-------------------------------------#
+# Déselection d'une ligne de Shipment #
+#-------------------------------------#
+$DEPICK_SHIP
+WNUM=[F:SHD]SHIPNUM : WLIN=[F:SHD]SHIPLIN
+Read [SHD] SHD0=WNUM;WLIN  : If fstat Raz [F:SHD] : Endif
+If WDEBPICK | [F:SHH]SHIPNUM<>[F:SHD]SHIPNUM
+  Read [SHH] SHH0=[F:SHD]SHIPNUM : If fstat Raz [F:SHH] : Endif
+Endif
+If [F:SHH]SHIPNUM="" & [F:ITM]ITMREF=""
+  Call RSTA("XSHD",WNUM-num$(WLIN)) From GLOCK
+  OK=0 : Return
+Endif
+WDEBPICK=0
+Read [F:POQ]POQ0 = [F:SHD]POHNUM;[F:SHD]POPLIN;[F:SHD]POQSEQ
+If fstat : Raz [F:POQ] : Endif
+Read [F:POH]POH0 = [F:POQ]POHNUM
+If fstat : Raz [F:POH] : Endif
+#
+Gosub DEPICK_CDE
+Return
+
+#-------------------------------------------------------------#
+# Recherche et suppression de la ligne de commande "dépickée" #
+#-------------------------------------------------------------#
+$RECHSUP_LIG_CDE
+#-----
+If [F:ITM]ITMREF<>[F:POQ]ITMREF
+  Read [ITM] ITM0=[F:POQ]ITMREF : If fstat Raz [F:ITM] : Endif
+Endif
+If [F:ITP]ITMREF<>[F:POQ]ITMREF
+  Read [ITP] ITP0=[F:POQ]ITMREF;[F:POQ]BPSNUM : If fstat Raz [F:ITP] : Endif
+Endif
+#-----
+Raz J
+While J<[M:PTH1]NBLIG
+  K=find([F:POQ]POHNUM,[M:PTH1]POHNUM(J..[M:PTH1]NBLIG-1))
+  I=J+(K-1)
+  If K=0
+    J=[M:PTH1]NBLIG
+# Issue 111048 - 2015-09-15 by SR : même ligne d'expédition
+  Elsif [M:PTH1]POPLIN(I)=[F:POQ]POPLIN &
+&       [M:PTH1]POQSEQ(I)=[F:POQ]POQSEQ &
+&       [M:PTH1]CREFLG(I)=0 &
+&       ([M:PTH1]SHIPNUM(I) = "" | ([M:PTH1]SHIPNUM(I)=[F:SHD]SHIPNUM & [M:PTH1]SHIPLIN(I)=[F:SHD]SHIPLIN))
+    nolign=I+1 : status=65 : Call AVANT_NBLIG From SUBPTH
+    Dela I,1,[M:PTH1]NBLIG-1 [M:PTH1]NBLIG : [M:PTH1]NBLIG-=1 : [M:PTH1]CLCFLG=2
+    J+=K-1 : K=0 : status=0
+  Else
+    J+=K : K=0
+  Endif
+Wend
+Return
+
+
+#--------------------------------------------------------------#
+# Recherche et suppression de la ligne de livraison "dépickée" #
+#--------------------------------------------------------------#
+$RECHSUP_LIG_LIV
+If [F:ITM]ITMREF<>[F:SDD]ITMREF
+  Read [ITM] ITM0=[F:SDD]ITMREF : If fstat Raz [F:ITM] : Endif
+Endif
+If [F:ITP]ITMREF<>[F:SDD]ITMREF
+  Read [ITP] ITP0=[F:SDD]ITMREF;[M:PTH0]BPSNUM : If fstat Raz [F:ITP] : Endif
+Endif
+#-----
+Raz J
+While J<[M:PTH1]NBLIG
+  K=find([F:SDD]SDHNUM,[M:PTH1]SDHNUM(J..[M:PTH1]NBLIG-1))
+  I=J+(K-1)
+  If K=0
+    J=[M:PTH1]NBLIG
+  Elsif [M:PTH1]SDDLIN(I)=[F:SDD]SDDLIN &
+&       [M:PTH1]CREFLG(I)=0
+    Read [POQ] POQ0=[M:PTH1]POHNUM(I);[M:PTH1]POPLIN(I);[M:PTH1]POQSEQ(I)
+    If fstat Raz [F:POQ] : [F:POQ]POHNUM=[M:PTH1]POHNUM(I) : Endif
+    nolign=I+1 : status=65 : Call AVANT_NBLIG From SUBPTH
+    Dela I,1,[M:PTH1]NBLIG-1 [M:PTH1]NBLIG : [M:PTH1]NBLIG-=1 : [M:PTH1]CLCFLG=2
+    J+=K-1 : K=0 : status=0
+  Else
+    J+=K : K=0
+  Endif
+Wend
+Return
+
+
+#--------------------------------------------------------------#
+# Lectures des tables après le picking d'une ligne de commande #
+#--------------------------------------------------------------#
+$LECFIC_PICKE_CDE
+#-----
+If [F:ITM]ITMREF<>[F:POQ]ITMREF
+  Read [ITM] ITM0=[F:POQ]ITMREF : If fstat  Raz [F:ITM] : Endif
+Endif
+If [F:ITP]ITMREF<>[F:POQ]ITMREF | [F:ITP]BPSNUM<>[F:POQ]BPSNUM
+  Read [ITP] ITP0=[F:POQ]ITMREF;[F:POQ]BPSNUM : If fstat  Raz [F:ITP] : Endif
+Endif
+If [F:ITF]ITMREF<>[F:POQ]ITMREF | [F:ITF]STOFCY<>[M:PTH0]PRHFCY
+  Read [ITF] ITF0=[F:POQ]ITMREF;[M:PTH0]PRHFCY
+  If fstat  Raz [F:ITF] : [F:ITF]STOMGTCOD=[F:ITM]STOMGTCOD : Endif
+Endif
+#----- Si inter-sites avec correspondance dans les ventes -----#
+If [F:POH]SALFCY<>""
+  Read [SOQ] SOQ0=[F:POQ]LINOCNNUM;[F:POQ]OCNLIN;[F:POQ]OCNSEQ
+  If fstat  GMESSAGE=mess(274,194,1) : GERR=1 : OK=0 : Return : Endif
+  Read [SDD] SDD0=[F:SOQ]SDHNUM;[F:SOQ]SDDLIN
+  If !fstat
+    Read [SDH] SDH0=[F:SDD]SDHNUM : If fstat  Raz [F:SDH] : Endif
+  Else
+    Raz [F:SDH], [F:SDD]
+  Endif
+Elsif GMODU(5)=2
+  Raz [F:SOQ], [F:SDH], [F:SDD]
+Endif
+#----- Lecture ligne article contrat si nécessaire et ligne prix -----#
+If [F:POQ]POHTYP<>2
+  Raz [F:POC]
+  Read [POP] POP0=[F:POQ]POHNUM;[F:POQ]POPLIN;1 : If fstat  Raz [F:POP] : Endif
+Else
+  Read [POC] POC0=[F:POQ]POHNUM;[F:POQ]POPLIN   : If fstat  Raz [F:POC] : Endif
+  Filter [POP] Where POHNUM=[F:POQ]POHNUM & POPLIN=[F:POQ]POPLIN & POPDAT>=[F:POQ]DEMRCPDAT
+  Read [POP] POP1 First : If fstat  Raz [F:POP] : Endif
+  Filter [POP]
+Endif
+Return
+
+
+#---------------------------------------------------------------#
+# Lectures des tables après le picking d'une ligne de livraison #
+#---------------------------------------------------------------#
+$LECFIC_PICKE_LIV
+#-----
+If [F:ITM]ITMREF<>[F:SDD]ITMREF
+  Read [ITM] ITM0=[F:SDD]ITMREF : If fstat  Raz [F:ITM] : Endif
+Endif
+If [F:ITP]ITMREF<>[F:SDD]ITMREF | [F:ITP]BPSNUM<> [M:PTH0]BPSNUM
+  Read [ITP]ITP0 = [F:SDD]ITMREF;[M:PTH0]BPSNUM : If fstat  Raz [F:ITP] : Endif
+Endif
+If [F:ITF]ITMREF<>[F:SDD]ITMREF | [F:ITF]STOFCY<>[M:PTH0]PRHFCY
+  Read [ITF] ITF0=[F:SDD]ITMREF;[M:PTH0]PRHFCY
+  If fstat  Raz [F:ITF] : [F:ITF]STOMGTCOD=[F:ITM]STOMGTCOD : Endif
+Endif
+#----- Lecture ligne commande vente et achat -----#
+Read [SOQ]SOQ0=[F:SDD]SOHNUM;[F:SDD]SOPLIN;[F:SDD]SOQSEQ
+If !fstat
+  If [F:SOQ]POHNUM<>""
+    Read [POQ] POQ0=[F:SOQ]POHNUM;[F:SOQ]POPLIN;[F:SOQ]POQSEQ
+    If fstat  Raz [F:POQ] : Endif
+    If [F:POH]POHNUM<>[F:SOQ]POHNUM
+      Read [POH] POH0=[F:SOQ]POHNUM : If fstat  Raz [F:POH] : Endif
+    Endif
+  Else
+    Raz [F:POH], [F:POC], [F:POQ], [F:POP]
+  Endif
+Else
+  Raz [F:SOQ], [F:POH], [F:POC], [F:POQ], [F:POP]
+Endif
+#----- Lecture ligne article contrat si nécessaire et ligne prix -----#
+If [F:POQ]POHNUM<>""
+  If [F:POQ]POHTYP<>2 : # Commande classique
+    Raz [F:POC]
+    Read [POP] POP0=[F:POQ]POHNUM;[F:POQ]POPLIN;1 : If fstat  Raz [F:POP] : Endif
+  Else                : # Commande ouverte
+    Read [POC] POC0=[F:POQ]POHNUM;[F:POQ]POPLIN   : If fstat  Raz [F:POC] : Endif
+    Filter [POP] Where POHNUM=[F:POQ]POHNUM & POPLIN=[F:POQ]POPLIN & POPDAT>=[F:POQ]DEMRCPDAT
+    Read [POP] POP1 First : If fstat  Raz [F:POP] : Endif
+    Filter [POP]
+  Endif
+Endif
+Return

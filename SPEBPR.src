@@ -1,0 +1,33 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ Terceros
+# Gestión de la máscara BPRBPC (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla BPRBPC) 22/11/2019 11:14:02 (ADMIN)
+######################################################################################
+$ACTION
+Case ACTION
+ When default
+Endcase
+Return
+######################################################################################
+
+######################################################################################
+## AUREN 05.867.011 -> ASIGNAR MODELO IMPRESIÓN MAIL SI SE ACTIVA FLAG 
+######################################################################################
+Subprog AM_ZENVFACPDF(VALEUR)
+Variable Integer VALEUR
+
+   If VALEUR = 2 
+      [M:BPC1]TPMCOD='MAIL'
+      Affzo [M:BPC1]TPMCOD
+   Else 
+      [M:BPC1]TPMCOD=''
+      Affzo [M:BPC1]TPMCOD
+   Endif
+
+End
+######################################################################################
+
+
+
+

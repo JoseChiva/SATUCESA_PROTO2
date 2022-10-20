@@ -1,0 +1,226 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Recepciones
+# Gestión de la máscara VXAPR1 (Especifico)
+
+######################################################################################
+## Después de Campo zcodbarped CABECERA
+######################################################################################
+Subprog AP_ZCODBARPED(VALEUR)
+Variable Char    VALEUR()
+
+Call GETCAMPOSCABECERARECEPCIONES(VALEUR) From SPEUTILSATUCESA
+
+If num$(ZCCODLOT) <> "-" and num$(ZCCODITM)<> "-" and num$(ZCCANT)<>"0"
+  [M:APR0]ZCODBARPED = num$(ZCCODLOT)+"-"+num$(ZCCODITM)+"-"+num$(ZCCANT)
+Endif
+Affzo [M:APR0]ZCODBARPED
+
+Gosub IGUALA_LINEA_A_CABECERA
+
+End
+
+#######################################################################################
+### Después de campo zcodbar LINEA
+###
+### OjO la primera
+###
+#######################################################################################
+Subprog AM_ZCODBAR(VALEUR)
+Variable Char    VALEUR()
+
+Gosub GETCAMPOSLINEA
+
+If num$(ZLCODLOT) <> "-" and num$(ZLCODITM)<> "-" and num$(ZLCANT)<>"0"
+  [M:APR1]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+Endif
+Affzo [M:APR1]ZCODBAR
+End
+
+###==========GETCAMPOSLINEA===============########
+$GETCAMPOSLINEA
+Global Integer IL1,IL2,ZLCANT()
+Global Char ZLVALOR(60),ZLCODLOT(20),ZLCODITM(20)
+IL1=0:IL2=0:ZLVALOR="":ZLCODLOT="":ZLCODITM="":ZLCANT=0
+ZLVALOR=VALEUR
+IL1= instr(1,ZLVALOR,"%A")
+IL2= instr(1,ZLVALOR,"%Q")
+
+If IL1 <> 0 and IL2 <> 0
+  If mid$(ZLVALOR,1,IL1-1) <> [M:APR0]POHNUM
+    Errbox("Pedido línea # Cabecera")
+    [M:APR1]ZCODBAR=""
+    Affzo [M:APR1]ZCODBAR
+    zonsui ="[M:APR1]ZCODBAR"
+  Else
+    ZLCODLOT=mid$(ZLVALOR,1,IL1-1)
+    ZLCODITM=mid$(ZLVALOR,IL1+2,(IL2-IL1)-2)
+    ZLCANT=val(mid$(ZLVALOR,IL2+2,len(ZLVALOR)))
+  Endif
+Endif
+
+Return
+
+##########################################
+###======IGUALA_LINEA_A_CABECERA========
+### Sólo la primera línea
+##########################################
+$IGUALA_LINEA_A_CABECERA
+Global Integer IL1,IL2,ZLCANT()
+Global Char ZLVALOR(60),ZLCODLOT(20),ZLCODITM(20)
+IL1=0:IL2=0:ZLVALOR="":ZLCODLOT="":ZLCODITM="":ZLCANT=0
+
+ZLCODLOT=ZCCODLOT
+ZLCODITM=ZCCODITM
+ZLCANT=ZCCANT
+
+[M:APR1]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+Affzo [M:APR1]ZCODBAR
+
+Return
+
+
+######################################################################################
+## CABECERA Antes de entrada POHNUM
+######################################################################################
+Subprog AS_POHNUM(VALEUR)
+Variable Char    VALEUR()
+If ZCCODLOT <> ""
+  [M:APR0]POHNUM = ZCCODLOT
+Endif
+Affzo [M:APR0]POHNUM
+End
+######################################################################################
+## CABECERA Después de campo POHNUM
+######################################################################################
+Subprog AP_POHNUM(VALEUR)
+Variable Char    VALEUR()
+If [M:APR0]POHNUM = ""
+  zonsui="[M:APR0]POHNUM"
+Endif
+End
+
+######################################################################################
+## LINEA Antes de entrada a ITMREF
+######################################################################################
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:APR1]ITMREF = ZLCODITM
+Affzo [M:APR1]ITMREF
+End
+######################################################################################
+
+######################################################################################
+## LINEA Antes de entrada STA
+######################################################################################
+Subprog AS_STA(VALEUR)
+Variable Char    VALEUR()
+[M:APR1]STA = 'A'
+Affzo
+End
+######################################################################################
+## LINEA Antes de entrar QTYOUM
+#####################################################################################
+Subprog AS_QTYUOM(VALEUR)
+Variable Decimal VALEUR
+If ZLCANT <> 0
+  [M:APR1]QTYUOM = ZLCANT
+Endif
+Affzo [M:APR1]QTYUOM
+End
+
+######################################################################################
+## LINEA Antes de entrada LOT
+######################################################################################
+Subprog AS_LOT(VALEUR)
+Variable Char    VALEUR()
+[M:APR1]LOT=[M:APR0]POHNUM
+#If ZLCODLOT <> ""
+#  [M:APR1]LOT = ZLCODLOT
+#Endif
+Affzo [M:APR1]LOT
+End
+
+######################################################################################
+## LINEA Después de campo LOT
+######################################################################################
+Subprog AP_LOT(VALEUR)
+Variable Char    VALEUR()
+#Infbox ("pasa por depués de campo espe")
+#Affzo [M:APR1]LOT
+End
+
+
+##############################################
+## CREACIÓN DE FICHEROS LOG
+##############################################
+##=========GRABALOG01=========
+$GRABALOG01
+Local Integer SIZE
+SIZE = filinfo("_vrdx3log", 7)
+If SIZE < 0 :           # El fichero no existe
+  Openo "_vrdx3log"     # se abre y se crea
+  adxifs=";"
+Else                    # el fichero existe
+  Openo                 # cierra el archivo
+  Openo "_vrdx3log",-1  # se abre en modo append
+  adxifs=";"
+Endif
+If dim(ZLVALOR)>=0 : Wrseq("ZLValor - "+num$(ZLVALOR)) : Endif
+If dim(IL1 )>=0 : Wrseq("IL1 - "+num$(IL1)) : Endif
+If dim(IL2 )>=0 : Wrseq("IL2 - "+num$(IL2)) : Endif
+If dim(ZLCODBAR )>=0 : Wrseq("ZLCODBAR - "+num$(ZLCODPED)) : Endif
+If dim(ZLCODITM )>=0 : Wrseq("ZLCODITM - "+num$(ZLCODITM)) : Endif
+If dim(ZLCANT )>=0 : Wrseq("ZLCANT - "+num$(ZLCANT)) : Endif
+Openo
+Return
+
+##========GRABALOG02==============
+$GRABALOG02
+Infbox("pasa por grabalog02")
+Local Integer SIZE
+SIZE = filinfo("_vrdx3log", 7)
+If SIZE < 0 :           # El fichero no existe
+  Openo "_vrdx3log"     # se abre y se crea
+  adxifs=";"
+Else                    # el fichero existe
+  Openo                 # cierra el archivo
+  Openo "_vrdx3log",-1  # se abre en modo append
+  adxifs=";"
+Endif
+Wrseq("================")
+If dim(ZCVALOR)>=0 : Wrseq("ZCVALOR - "+num$(ZCVALOR)) : Endif
+If dim(ZCCODPED )>=0 : Wrseq("ZCCODPED - "+num$(ZCCODPED)) : Endif
+If dim(ZCCODITM )>=0 : Wrseq("ZCCODITM - "+num$(ZCCODITM)) : Endif
+If dim(ZCCANT )>=0 : Wrseq("ZCCANT - "+num$(ZCCANT)) : Endif
+Openo
+Return
+
+
+#mess(30,7750,1)
+#mess(16,7750,1)
+#mess(29,7750,1)
+#mess(17,7750,1)
+#mess(30,7750,1)
+#mess(17,7750,1)
+#mess(31,7750,1)
+#mess(144,100,1)
+#mess(501,9137,1)
+#mess(100,187,1) # "Estado no indicado"
+#mess(32,7750,1)
+#mess(18,100,1)
+#mess(351,198,1)
+#mess(37,7750,1)
+#mess(16,7750,1)
+
+######################################################################################
+
+
+
+
+######################################################################################
+
+
+
+
+######################################################################################
+

@@ -1,0 +1,415 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)1.0.0.0 $Revision$
+####################################################################################
+# Program Name: VXAMO
+# Description : ADC Miscellaneous Issues
+# Author      : Bromley/Deutschbauer
+# Date        : February 14th, 2006
+####################################################################################
+
+Local Char PARAM(10)(1..2) , VALEUR(10)
+
+Call SAISIE_CHAR(VALEUR,PARAM,"VXAMO","VXAMO","XWVXAMO") From GSAISIE
+
+End
+
+########################################################
+# Miscellaneous Issue
+########################################################
+#
+# Necessary field in the VT Screen
+# --------------------------------
+# STOFCY, ITMREF, PCU, QTYPCU, STU , QTYSTU, PCUSTUCOE
+# STA, LOC, LOT, SLO, PALNUM, CTRNUM, SERNUM, SERNUMF
+# WSTOSEQ
+#
+# Necessary value in Entry transaction
+# ------------------------------------
+# Field 'Automatic determination' --> No
+#
+#
+########################################################
+
+########################################################
+$ACTION
+#--- Actions liées à la fenêtre de saisie
+Case ACTION
+ When "OUVRE"         : Gosub OUVRE
+ When "DEBUT"         : Gosub DEBUT
+ When "SETBOUT"       : Gosub SETBOUT
+ When "AVANT_OK"      : Gosub AVANT_OK
+ When "OK"            : Gosub OK
+ When "BOUTON"        : Gosub BOUTON
+ When "END"           : Gosub CHECK
+ When "FIN"           : Gosub FIN
+Endcase
+
+Return
+
+########################################################
+# Actions liées à la fenètre de saisie
+########################################################
+
+########################################################
+$OUVRE
+
+GVTMOD=1
+
+# Initialisation du site de stock
+Gosub INIT_STOFCY From ENVADC
+
+Gosub OUVRE_SMO From ENVADC
+
+Return
+
+########################################################
+$DEBUT
+
+Local Integer WOK, WRET, WCPT
+#--- TS 106217
+Local Char    WNIVERR(1)(0..9)
+#Local Char    WNIVERR(10)
+#---
+
+# GFLAG contains the miscellaneous receipt transaction
+GFLAG = func ENVADC.SETTRANS(2)
+
+[M:XAMO]SRTNUM = GFLAG
+
+Gosub DEBUT_SMO From ENVADC
+
+Gosub INIT_SCREEN
+
+# verify that the ADC site is set
+If GXAFCY=""
+   Call ERREUR(mess(16,7750,1)) From GESECRAN : FIN = 1 : Return
+Endif
+
+Return
+
+########################################################
+$SETBOUT
+
+If !find("O",CHBOU) CHBOU+="O" Endif
+If !find("1",CHMEN) CHMEN+="1" Endif
+
+Return
+
+########################################################
+$AVANT_OK
+
+FIN=0
+If [M:XAMO]ITMREF="" | [M:XAMO]PCU="" | [M:XAMO]QTYPCU<=0
+   GERR=1 : GMESSAGE=mess(17,7750,1)
+   #zonsui="[M:XAMO]ITMREF"      # Aelis
+   zonsui="[M:XAMO]ZCODBAR"      # Aelis
+Endif
+
+Return
+
+########################################################
+$OK
+
+Gosub OK_SMO From ENVADC
+
+If GOUVSOR>=1
+   WNIVERR=""
+   #--- TS 106217
+   Local Integer K : K=0
+   If WRET>=1024 : WNIVERR(K)="0" : K+=1 : WRET-=1024 : Endif : # Version
+   If WRET>=512  : WNIVERR(K)="1" : K+=1 : WRET-=512  : Endif : # Quantité
+   If WRET>=256  : WNIVERR(K)="2" : K+=1 : WRET-=256  : Endif : # Emplacement
+   If WRET>=128  : WNIVERR(K)="3" : K+=1 : WRET-=128  : Endif : # Dem analyse
+   If WRET>= 64  : WNIVERR(K)="4" : K+=1 : WRET-= 64  : Endif : # Statut
+   If WRET>= 32  : WNIVERR(K)="5" : K+=1 : WRET-= 32  : Endif : # Inventaire
+   If WRET>= 16  : WNIVERR(K)="6" : K+=1 : WRET-= 16  : Endif : # Lot périmé
+   If WRET>=  8  : WNIVERR(K)="7" : K+=1 : WRET-=  8  : Endif : # Sous-lot
+   If WRET>=  4  : WNIVERR(K)="8" : K+=1 : WRET-=  4  : Endif : # Lot
+   If WRET>=  2  : WNIVERR(K)="9" : K+=1 : WRET-=  2  : Endif : # Série
+   #---
+   If find("1",WNIVERR)
+      GMESSAGE=mess(20,7750,1)
+   Elsif find("9",WNIVERR)
+      GMESSAGE=mess(4,7750,1)
+   Elsif find("8",WNIVERR)
+      GMESSAGE=mess(2,7750,1)
+   Elsif find("7",WNIVERR)
+      GMESSAGE=mess(3,7750,1)
+   #--- TS 106217
+   Elsif find("0",WNIVERR)
+      GMESSAGE=mess(43,7750,1)
+   #---
+   Elsif find("2",WNIVERR)
+      GMESSAGE=mess(5,7750,1)
+   Elsif find("3",WNIVERR)
+      GMESSAGE=mess(19,7750,1)
+   Elsif find("6",WNIVERR)
+      GMESSAGE=mess(398,199,1)
+   Elsif find("5",WNIVERR)
+      GMESSAGE=mess(126,184,1)
+   Elsif find("4",WNIVERR)
+      GMESSAGE=mess(6,7750,1)
+   Else
+      GMESSAGE=mess(12,7750,1)
+   Endif
+   #GERR=1 : zonsui="[M:XAMO]ITMREF" : Return    # Aelis
+   GERR=1 : zonsui="[M:XAMO]ZCODBAR" : Return    # Aelis
+Endif
+
+[L]WCPT = [M:XAMO]WCPT
+Effzo [M:XAMO]1-99
+[M:XAMO]WCPT   = [L]WCPT+1
+[M:XAMO]STOFCY = [M:SMO0]STOFCY
+[M:XAMO]SRTNUM = GFLAG
+Affzo [M:XAMO]1-99
+
+   #zonsui="[M:XAMO]ITMREF"      # Aelis
+   zonsui="[M:XAMO]ZCODBAR"      # Aelis
+
+Return
+
+########################################################
+$BOUTON
+
+# Création
+If BOUT="1" Gosub CRE Endif
+# Abandon
+If BOUT="2" Gosub ABA Endif
+
+Return
+
+########################################################
+$ABA
+
+If [M:SMO1]NBLIG > 0
+    Call DELSTOSORW(-1,-1,"SMO1",[M:SMO0]STOFCY,WRET) From STKSOR
+Else
+    Call RAZSTOSORW From STKSOR
+Endif
+
+Gosub INIT_SCREEN
+GREP = ""
+#zonsui = "[M:XAMO]ITMREF"    # Aelis
+zonsui = "[M:XAMO]ZCODBAR"    # Aelis
+Return
+
+########################################################
+$CRE
+
+# Si article renseigné, enregistrement de la saisie (bouton OK)
+If [M:XAMO]ITMREF<>""
+   Gosub AVANT_OK
+   If GERR=1 Return Endif
+   Gosub OK
+   If GERR=1 Return Endif
+Endif
+
+If [M:SMO1]NBLIG=0
+   Call ERREUR(mess(17,7750,1)) From GESECRAN
+   #zonsui="[M:XAMO]ITMREF" : Return   # Aelis
+   zonsui="[M:XAMO]ZCODBAR" : Return   # Aelis
+Endif
+
+#Gosub CRE_SMO From ENVADC
+Call CRE_SMO From ENVADC
+
+GPROGRAMME = "GSAISIE"
+GBOITE     = BOITE
+Call NOMTRTWIN(GBOITE,WINPROG) From MSKDIV
+Gosub DEFVAR From= WINPROG
+GREP="" : REP=""
+GNOLIG = 0
+
+Gosub INIT_SCREEN
+
+GREP = ""
+#zonsui = "[M:XAMO]ITMREF"    # Aelis
+zonsui = "[M:XAMO]ZCODBAR"    # Aelis
+
+Return
+
+########################################################
+$CHECK
+
+If [M:SMO1]NBLIG<>0
+   WOK=1
+   # Pièce en cours de saisie non enregistrée
+   Call OUINON(mess(38,7750,1),WOK) From GESECRAN
+   If WOK<>2
+      #FIN=0 : zonsui="[M:XAMO]ITMREF" : Return   # Aelis
+      FIN=0 : zonsui="[M:XAMO]ZCODBAR" : Return   # Aelis
+   Endif
+Endif
+
+Return
+########################################################
+$FIN
+
+Gosub FIN_SMO From ENVADC
+
+GVTMOD=0
+
+Return
+
+########################################################
+$INIT_SCREEN
+
+Default Mask [SMO0]
+
+Raz [M:SMO0]
+Raz [M:SMO1]
+
+# set post date and site
+[M:SMO0]IPTDAT = date$
+[M:SMO0]STOFCY = GXAFCY
+
+Raz [M:XAMO]
+
+Gosub RAZCRE   From SUBSMOA
+
+#--- Bug 67961
+# Chargement du paramétrage lié au site
+If GFCY<>[M:SMO0]STOFCY
+   GFCY=[M:SMO0]STOFCY
+   Gosub CHARG_PARAM From SUBSMOA
+Endif
+#---
+
+[M:XAMO]STOFCY = [M:SMO0]STOFCY
+[M:XAMO]SRTNUM = GFLAG
+
+Affzo [M:XAMO]1-99
+nolign=0
+
+MA=1
+Gosub SETMASK From=WINPROG
+Default Mask [M:XAMO]
+
+Return
+
+########################################################
+# Actions champs
+########################################################
+
+########################################################
+Subprog AM_SRTNUM(VALEUR)
+Variable Char    VALEUR()
+
+GFLAG   = VALEUR
+#--- Bug 90080
+GSMONUM = VALEUR
+
+[M:SMO0]TRSCOD = [F:SRT]TRSCOD
+[M:SMO0]TRSFAM = [F:SRT]TRSFAMDEF
+[M:SMO0]ENTCOD = [F:SRT]ENTCOD
+
+End
+
+########################################################
+Subprog C_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR=""
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+Local    Integer WRET
+
+Gosub AM_ITMREF_SMO From ENVADC
+
+# Old
+# Disable fields that should not be prompted for, based on the product
+#If [F:ITM]LOTMGTCOD<2
+#    Grizo [M]LOT
+#Endif
+#If [F:ITM]LOTMGTCOD<2 | [F:ITM]LOTMGTCOD<>4
+#    Grizo [M]SLO
+#Endif
+#If [F:ITM]SERMGTCOD<3
+#    Grizo [M]SERNUM
+#Endif
+#[M]TCLCOD    = [F:ITM]TCLCOD
+#[M]STU       = [F:ITM]STU
+#[M]PCU       = [F:ITM]STU
+#[M]PCUSTUCOE = 1
+#---
+
+End
+
+########################################
+#--- TS 106217
+Subprog C_ECCVALMAJ(VALEUR)
+Variable Char    VALEUR()
+Local Integer    LRET
+
+Call CTLECCVAL(VALEUR,[M:XAMO]STOFCY,[M:XAMO]ITMREF,
+&             [M:SMO0]TRSTYP,[M:SMO0]TRSCOD,[M:SMO0]IPTDAT,LRET) From STKSOR
+If LRET>0 mkstat=2 Endif
+End
+#---
+
+########################################################
+Subprog AM_PCU(VALEUR)
+Variable Char    VALEUR()
+Local Char    LUSCAV
+Local Char    LFMT
+Local Integer LMODIF
+
+Gosub AM_PCU_SMO From ENVADC
+
+End
+
+########################################################
+Subprog AM_PCUSTUCOE(VALEUR)
+Variable Decimal VALEUR
+
+Gosub AM_PCUSTUCOE_SMO From ENVADC
+
+End
+
+########################################################
+Subprog C_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+
+If VALEUR<=0
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+
+Gosub AM_QTYPCU_SMO From ENVADC
+
+End
+
+########################################################
+Subprog C_SERNUM(VALEUR)
+Variable Char    VALEUR()
+
+If [M:XAMO]QTYPCU=1 & [F:ITM]SERMGTCOD <> 2  # hcb 100119
+   Read [STO]STO5=[M:XAMO]ITMREF;VALEUR
+   If fstat
+      mkstat=2 : End
+   Else
+      If dim([M:XAMO]LOT)>0  [M:XAMO]LOT=[F:STO]LOT  Endif
+      If dim([M:XAMO]SLO)>0  [M:XAMO]SLO=[F:STO]SLO  Endif
+      If dim([M:XAMO]LOC)>0  [M:XAMO]LOC=[F:STO]LOC  Endif
+      [M:XAMO]STA = [F:STO]STA
+      Affzo [M:XAMO]1-99
+   Endif
+Endif
+
+Gosub AM_SERNUM_SMO From ENVADC
+
+End
+
+######################################################################################
+

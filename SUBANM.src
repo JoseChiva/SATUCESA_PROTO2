@@ -1,0 +1,1127 @@
+#<AdxTL>@(#)7.0.0.0 $Revision$
+Raz GPILOBJ , GNBMASKOUV
+Call OBJET("ANM",GBIDC1,GBIDC2) From GOBJET
+End
+
+#-------------------------------------------------#
+$ACTION
+Case ACTION
+ When "OUVRE"      : Gosub OUVRE
+ When "LIENS"      : Gosub LIENS
+ When "SETBOUT"    : Gosub SETBOUT
+ When "VERIF_CRE"  : Gosub VERIF_CRE
+ When "VERIF_MOD"  : Gosub VERIF_MOD
+ When "INICRE"     : Gosub INICRE
+ When "INIMOD"     : Gosub INIMOD
+ When "CREATION"   : Gosub MAJ_TEXTE
+ When "MODIF"      : Gosub MAJ_TEXTE
+ When "ANNULE"     : Gosub ANNULE
+ When "CHANGE"     : Gosub CHANGE
+ When Default
+Endcase
+Return
+
+#--------------------------------------------#
+$SETBOUT
+If CLECUR=0 | REP="M" | !VERROU
+ Call VIREBOUT(CHAINE,"2") From GOBJET
+Endif
+Return
+
+#-------------------------------------------------#
+$OUVRE
+If clalev([F:ATX])=0 : Local File ATEXTE   [ATX] : Endif
+If clalev([F:ATB])=0 : Local File ATABLE   [ATB] : Endif
+If clalev([F:AVN])=0 : Local File AVALNUM  [AVN] : Endif
+Return
+
+#-------------------------------------------------#
+$LIENS
+Actzo SEQ
+Case [F:ANM]SEQ
+ When 2
+  Actzo SEQTBL
+  Effzo SEQNBR
+  Grizo SEQNBR
+ When 3
+  Actzo SEQNBR
+  Effzo SEQTBL
+  Grizo SEQTBL
+ When 1
+  Effzo SEQNBR,SEQTBL
+  Grizo SEQNBR,SEQTBL
+Endcase
+Return
+
+#-------------------------------------------------#
+$INICRE
+$INIMOD
+If [F:ANM]SEQTBL<>""
+ Read [ATB]CODFIC = [F:ANM]SEQTBL
+ [F:ANM]SEQABR = [F:ATB]ABRFIC
+Endif
+If [F:ANM]LEG="" & !func AFNC.ACTIV("LEG")
+ [F:ANM]LEG = GDOSLEG(1)
+Endif
+Return
+
+#-------------------------------------------------#
+$VERIF_CRE
+$VERIF_MOD
+Gosub VERIF
+Return
+
+$ANNULE
+Delete [AXX] Where CODFIC="ACODNUM"  & IDENT1=[L]CODE  & ZONE ="DES"
+If fstat=1 | fstat>5
+ GOK=0 : Call RSTA("AXX",[M]COD) From GLOCK
+Endif
+Return
+
+$CHANGE
+Update [AXX] Where CODFIC="ACODNUM" & IDENT1=[L]OCODE & ZONE ="DES" With IDENT1=[L]NCODE
+If fstat=1
+ GOK=-1 : GLOCK="$ATEXTRA ACODNUM"-[L]OCODE : Return
+Elsif fstat
+ GOK=0 : Call RSTA("AXX",[L]OCODE) From GLOCK : Return
+Endif
+Return
+
+#-------------------------------------------------#
+$VERIF
+Local Integer NBSEQ , LGTOT , I , K
+OK = 1
+If [M]NBPOS=0 : OK = 0 : Return : Endif
+NBSEQ = 0 : LGTOT = 0
+For I=0 To [M]NBPOS-1
+ If [M]POSTYP(I)=8 : NBSEQ += 1 : Endif
+ LGTOT += [M]POSLNG(I)
+ If [M]TYP=2
+  If find(POSTYP(I),6,7)
+   OK = 0 : Break
+  Elsif POSTYP(I)=1 & num$(val([M]POSCTE(I)))<>POSCTE(I)
+   OK = 0 : Break
+  Endif
+ Endif
+Next I
+If !OK
+ GMESSAGE = mess(127,123,1) : Goto ERR_VERIF : # Donnée non numérique
+Elsif NBSEQ=0
+ GMESSAGE = mess(120,123,1) : Goto ERR_VERIF : # Pas de numéro de séquence
+Elsif NBSEQ>1
+ GMESSAGE = num$(NBSEQ)-mess(121,123,1) : Goto ERR_VERIF : # numéros de séquence
+Elsif LGTOT<3
+ GMESSAGE = mess(111,123,1) : Goto ERR_VERIF : # Longueur incorrecte
+Elsif LGTOT>20
+ GMESSAGE = mess(122,123,1) : Goto ERR_VERIF : # Longueur trop grande
+Endif
+If GPRODUIT<>1 : ## GEODE
+ Case [M]NIVDEF
+  When 2 : # Société
+   If !find(6,[M]POSTYP(0..[M]NBPOS-1)) & !find(7,[M]POSTYP(0..[M]NBPOS-1))
+    GMESSAGE = mess(124,123,1) : Goto ERR_VERIF : # Un champ société ou site doit être défini
+   Endif
+  When 3 : # Site
+   If !find(7,[M]POSTYP(0..[M]NBPOS-1))
+    GMESSAGE = mess(123,123,1) : Goto ERR_VERIF : # Un champ site doit être défini
+   Endif
+ Endcase
+Endif
+
+Look [AVN]AVN0(1)=[M]CODNUM
+If !fstat
+ Read [ANM]ANM0=[M]CODNUM
+ If !fstat
+  K = 1
+  If [M]NBPOS<>[F:ANM]NBPOS
+   K = 0
+  Else
+   For I=0 To [M]NBPOS-1
+    If [M]POSTYP(I)<>[F:ANM]POSTYP(I)
+     K = 0 : Break
+    Elsif [M]POSLNG(I)<>[F:ANM]POSLNG(I)
+     K = 0 : Break
+    Elsif [M]POSCTE(I)<>[F:ANM]POSCTE(I)
+     K = 0 : Break
+    Endif
+   Next I
+  Endif
+ Endif
+ If !K
+  # Compteur déjà attribué\La modification de structure peut entrainer des dysfonctionnements
+  K = 1 : Call AVERTIR(mess(245,123,1),K) From GESECRAN
+  If K<>2 : GMESSAGE = mess(245,123,1) : Goto ERR_VERIF : Endif
+ Endif
+Endif
+
+#  1 Constante
+#  2 Année
+#  3 Mois
+#  4 Semaine
+#  5 Jour
+#  6 Société
+#  7 Site
+#  8 No de séquence
+#  9 Complément
+# 10 Exercice
+# 11 Période
+# 12 Formule
+
+K = 1
+For I=0 To [M]NBPOS-1
+ Case [M]POSTYP(I)
+  When 6 : # Société
+   If val(func AFNC.PARAM("CPYMAXLEN",""))>0 & [M]POSLNG(I)<val(func AFNC.PARAM("CPYMAXLEN",""))
+    # La longueur du code $1$ est inférieure à la longueur maximale fixée par le paramètre $2$
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(233,125,1),mess(26,113,1),"CPYMAXLEN"),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+   If [M]POSLNG(I)<GLONCPY
+    # Il fortement recommandé d'utiliser la taille maximum ($1$ caractères) du champ $2$ pour éviter des doublons
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(273,139,1),num$(GLONCPY),mess(2,45,1)),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+   If val(func AFNC.PARAM("CPYMAXLEN",""))>0 & val(func AFNC.PARAM("CPYMINLEN",""))<>val(func AFNC.PARAM("CPYMAXLEN","")) & [M]CTLCHR=2
+    # Attention, des codes $1$ avec des longueurs inférieures à $2$ existent.
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(231,125,1),mess(26,113,1),num$([M]POSLNG(I))),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+  When 7 : # Site
+   If val(func AFNC.PARAM("FCYMAXLEN",""))>0 & [M]POSLNG(I)<val(func AFNC.PARAM("FCYMAXLEN",""))
+    # La longueur du code $1$ est inférieure à la longueur maximale fixée par le paramètre $2$
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(233,125,1),mess(29,109,1),"FCYMAXLEN"),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+   If [M]POSLNG(I)<GLONFCY
+    # Il fortement recommandé d'utiliser la taille maximum ($1$ caractères) du champ $2$ pour éviter des doublons
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(273,139,1),num$(GLONFCY),mess(3,45,1)),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+   If val(func AFNC.PARAM("FCYMAXLEN",""))>0 & val(func AFNC.PARAM("FCYMINLEN",""))<>val(func AFNC.PARAM("FCYMAXLEN","")) & [M]CTLCHR=2
+    # Attention, des codes $1$ avec des longueurs inférieures à $2$ existent.
+    K = 1 : Call AVERTIR(func AFNC.MES2(mess(231,125,1),mess(29,109,1),num$([M]POSLNG(I))),K) From GESECRAN
+    If K<>2 : K = 0 : Break : Endif
+   Endif
+ Endcase
+Next I
+If !K : Goto ERR_VERIF : Endif
+
+Case [M]NIVRAZ
+ When 2 : # Annuel
+  If !find(2,[M]POSTYP(0..[M]NBPOS-1))
+   K = 1 : Call AVERTIR(mess(125,123,1),K) From GESECRAN : # Un champ année n'a pas été défini
+   If K<>2 : GMESSAGE = mess(125,123,1) : Goto ERR_VERIF : Endif
+  Endif
+ When 3 : # Mensuel
+  If !find(3,[M]POSTYP(0..[M]NBPOS-1))
+   K = 1 : Call AVERTIR(mess(126,123,1),K) From GESECRAN : # Un champ mois n'a pas été défini
+   If K<>2 : GMESSAGE = mess(126,123,1) : Goto ERR_VERIF : Endif
+  Endif
+  If !find(2,[M]POSTYP(0..[M]NBPOS-1))
+   K = 1 : Call AVERTIR(mess(125,123,1),K) From GESECRAN : # Un champ année n'a pas été défini
+   If K<>2 : GMESSAGE = mess(125,123,1) : Goto ERR_VERIF : Endif
+  Endif
+ When 4 : # Exercice
+  If !find(10,[M]POSTYP(0..[M]NBPOS-1))
+   GMESSAGE = mess(115,126,1) : Goto ERR_VERIF : # Un champ exercice doit être défini
+  Endif
+ When 5 : # Période
+  If !find(11,[M]POSTYP(0..[M]NBPOS-1))
+   GMESSAGE = mess(213,126,1) : Goto ERR_VERIF : # Un champ période doit être défini
+  Endif
+  If !find(10,[M]POSTYP(0..[M]NBPOS-1))
+   GMESSAGE = mess(115,126,1) : Goto ERR_VERIF : # Un champ exercice doit être défini
+  Endif
+Endcase
+
+Return
+
+$ERR_VERIF
+OK = 0
+Return
+
+$MAJ_TEXTE
+Call MAJTEXTRA([M]DES,"ACODNUM","DES",[M]CODNUM,"") From ATEXTRA
+Return
+
+#-----------------------------------------------------------------------------#
+#- Bouton copie : on ne peut copier un enregistrement associer à une législation si dans
+# le dossier cible la législation n'est pas supportéez dans le dossier.
+#Si on copie un enregistrement multi-législation dans un dossier mono-législation,
+#l'enregistrement copié dans le dossier cible doit être affecté avecla législation du dossier.
+
+$TRTCOP
+If [M]DOSORG=nomap
+ Local File ACODNUM  [ANM1]
+ Local File ATEXTRA  [AXX1]
+Else
+ Local File =[M]DOSORG+".ACODNUM"  [ANM1]
+ Local File =[M]DOSORG+".ATEXTRA"  [AXX1]
+Endif
+If [M]DOSDES=nomap
+ Local File ACODNUM  [ANM2]
+ Local File ATEXTRA   [AXX2]
+Else
+ Local File =[M]DOSDES+".ACODNUM"  [ANM2]
+ Local File =[M]DOSDES+".ATEXTRA"  [AXX2]
+Endif
+Gosub OUVDOS From ATEXTRA
+Local Char DOSLEG(30)(1..30)
+Local Integer NBLEG
+Local Integer ISMULTILEG
+Call SETLEG([M]DOSDES,DOSLEG,NBLEG) From DOSCONT
+[L]ISMULTILEG = func AFNC.ACVDOSACT([M]DOSDES,"LEG")
+OK = 1
+If GTRACE=""
+ For [ANM1]ANM0 Where CODNUM=TABLE
+  If [F:ANM1]LEG<>"" & !find([F:ANM1]LEG,DOSLEG)
+   OK =0 : Call ERREUR([F:ANM1]LEG-":"-mess(67,127,1)-[M]DOSDES) From GESECRAN
+   Break
+  Endif
+ Next
+ If OK
+  Read [ANM2]ANM0 = TABLE
+  If !fstat
+   OK=1 : Call AVERTIR([M]DOSDES-TABLE-mess(22,100,1),OK) From GESECRAN
+   If OK<>2 : OK = 0 : Endif
+  Endif
+ Endif
+Endif
+If OK
+ Call DEBTRANS From GLOCK
+ Gosub TR_COP
+Endif
+Close Local File [ANM1], [ANM2], [AXX1] , [AXX2]
+Return
+
+$TR_COP
+GOK = 1
+Trbegin [ANM2]
+ Delete [ANM2] Where CODNUM=TABLE
+ If fstat=1
+  GOK=-1 : GLOCK = "$"+[M]DOSDES+".ACODNUM" : Goto ROLL_TR_COP
+ Elsif fstat>5
+  GOK = 0 : Call RSTA("ANM2","") From GLOCK : Goto AB_TR_COP
+ Endif
+ For [ANM1]ANM0 Where CODNUM=TABLE
+  [F:ANM2] = [F:ANM1]
+  If [L]ISMULTILEG=0
+   [F:ANM2]LEG = DOSLEG(1)
+  Endif
+  Call COPTEXTRA("ACODNUM","DES",[F:ANM2]CODNUM,"") From ATEXTRA
+  If dim([F:ANM2]UPDUSR)>0 : [F:ANM2]UPDUSR = GUSER : Endif
+  If dim([F:ANM2]UPDDAT)>0 : [F:ANM2]UPDDAT = date$ : Endif
+  Write [ANM2]
+  If fstat
+   GOK=0 : Call FSTA("ANM2") From GLOCK : Break
+  Endif
+ Next
+ If   GOK<0 : Goto ROLL_TR_COP
+ Elsif !GOK : Goto AB_TR_COP
+ Endif
+Commit
+Return
+
+$AB_TR_COP
+Rollback
+Return
+
+$ROLL_TR_COP
+Rollback
+Call ROLL From GLOCK
+If GROLL : Return : Else : Goto TR_COP : Endif
+
+#----------------------------------------------------------------#
+# Affectation des valeurs
+#----------------------------------------------------------------#
+
+Subprog NUMCLE(COMPTEUR,SITE,DAT,COMP,TYP,VALEUR,STAT)
+Value    Char    COMPTEUR
+Value    Char    SITE
+Value    Date    DAT
+Value    Char    COMP
+Value    Char    TYP
+Variable Char    VALEUR()
+Variable Integer STAT
+Local Char  VALORG(255) , VALDES(255)
+Call NUMERO(COMPTEUR,SITE,DAT,COMP,VALEUR,STAT)
+If STAT : End : Endif
+VALORG = VALEUR
+Call CONTROLE(VALORG,TYP,0,0,VALDES) From FMTVAR
+If VALEUR<>vireblc(VALDES,4)
+ STAT = 10 : End
+Endif
+End
+
+Subprog NUMERO_FIY(COMPTEUR,SITE,DAT,COMP,LEDTYP,VALEUR,STAT)
+Value    Char    COMPTEUR
+Value    Char    SITE
+Value    Date    DAT
+Value    Char    COMP
+Value    Integer LEDTYP
+Variable Char    VALEUR()
+Variable Integer STAT
+
+Goto NUM1
+End
+
+Subprog NUMERO(COMPTEUR,SITE,DAT,COMP,VALEUR,STAT)
+Value    Char    COMPTEUR
+Value    Char    SITE
+Value    Date    DAT
+Value    Char    COMP
+Variable Char    VALEUR()
+Variable Integer STAT
+
+Call REGISTRAACCION("PASA POR NUMERACOOOOOOOOOOOOOOOOOOOOO"+"--"+GREP) From SPEUTILSATUCESA
+
+$NUM1
+
+Local Integer I , K , NBRSEQ , TEMPO , NBLEC , MAXLEC
+Local Decimal VALMAX , SEQUENCE
+Local Integer PERIODE
+Local Char    SIT(10) , SOC(10) , FORMU(20) , COMPLEMENT , GCM(10)
+
+COMPLEMENT = COMP
+TEMPO = 3   : # Pour le sleep
+MAXLEC = 10 : # Nb max de tentative de lecture si le compteur est verrouillé avant d'afficher le message
+
+If clalev([F:AVN])=0 : Local File AVALNUM [AVN] : Endif
+If clalev([F:ANM])=0 : Local File ACODNUM [ANM] : Endif
+
+STAT = 0
+Read [ANM]ANM0 = COMPTEUR
+If fstat
+ Call RSTA("ANM",COMPTEUR) From GLOCK
+ STAT = 1 : GOK = 0 : End
+Endif
+
+If GPRODUIT=1 & COMP="" & dim([F:ANM]SEQDEP)>0 & [F:ANM]SEQDEP=2 : ## GEODE
+ STAT = 6 : GOK=0 : End
+Endif
+If !find(9,[F:ANM]POSTYP(0..[F:ANM]NBPOS-1))
+ COMP = ""
+Endif
+
+Case [F:ANM]NIVRAZ
+ When 1 : PERIODE = 0
+ When 2 : PERIODE = mod(year(DAT),100)
+ When 3 : PERIODE = 100*mod(year(DAT),100)+month(DAT)
+ When 4
+  Case GPRODUIT
+   When 0 : # X3
+    Local Decimal EXE : Raz EXE
+    If clalev([F:PER])=0  : Local File PERIOD [PER] : Endif
+    Gosub SETSOC
+    K = find(GCM,GGCM(1..GGCMNBR))
+    If K
+     #CHECK UNUSED_BEGIN
+     If dim([L]LEDTYP)>0 and [L]LEDTYP>0
+      Call GETEXE(SOC,[L]LEDTYP,DAT,EXE) From CPTSUB
+     Elsif dim(GLEDTYPGEN)>0
+      Call GETEXE(SOC,GLEDTYPGEN(K),DAT,EXE) From CPTSUB
+     Else
+      Call GETEXE(SOC,DAT,EXE) From CPTSUB
+     Endif
+     #CHECK UNUSED_END
+    Endif
+    If EXE>0
+     PERIODE = EXE
+    Else
+     STAT = 3 : GOK = 0 : End
+    Endif
+   When Default : # On fait comme pour l'année
+    PERIODE = mod(year(DAT),100)
+  Endcase
+ When 5
+  Case GPRODUIT
+   When 0 : # X3
+    Local Decimal EXE , PER : Raz EXE , PER
+    If clalev([F:PER])=0  : Local File PERIOD [PER] : Endif
+    Gosub SETSOC
+    K = find(GCM,GGCM(1..GGCMNBR))
+    If K
+     #CHECK UNUSED_BEGIN
+     If dim([L]LEDTYP)>0 and [L]LEDTYP>0
+      Call GETPERSOC(SOC,[L]LEDTYP,DAT,EXE,PER) From CPTSUB
+     Elsif dim(GLEDTYPGEN)>0
+      Call GETPERSOC(SOC,GLEDTYPGEN(K),DAT,EXE,PER) From CPTSUB
+     Else
+      Call GETPERSOC(SOC,DAT,EXE,PER) From CPTSUB
+     Endif
+     #CHECK UNUSED_END
+    Endif
+    If EXE>0
+     PERIODE = 100*EXE+PER
+    Else
+     STAT = 3 : GOK = 0 : End
+    Endif
+   When Default : # On fait comme pour le mois
+    PERIODE = 100*mod(year(DAT),100)+month(DAT)
+  Endcase
+Endcase
+
+If [F:ANM]NIVDEF>1 & SITE=""
+ STAT = 5 : GOK = 0 : End
+Endif
+Case [F:ANM]NIVDEF
+ When 1   : SIT = ""
+ When 2   : Gosub SETSOC : SIT = SOC
+ When 3   : SIT = SITE
+Endcase
+
+## Point d'entrée pour affecter COMP
+
+GPE = 0
+GPOINT = "NUMERO" : Gosub ENTREE From EXEFNC
+If GPE : End : Endif : # mb 6.2.2 demande 12328
+
+##
+
+I = find(8,[F:ANM]POSTYP(0..[F:ANM]NBPOS-1))
+If !I
+ STAT = 4 : GOK = 0 : End
+Endif
+
+## Attribution du numéro de séquence
+
+VALMAX = val(string$([F:ANM]POSLNG(I-1),"9"))
+NBLEC = 0
+Repeat
+ If dim([F:ANM]SEQ)>0
+  Case [F:ANM]SEQ
+   When 1 : NBRSEQ = 0 : Gosub SEQ_NORMAL
+   When 2 : Gosub SEQ_UNIQ
+   When 3 : Gosub SEQ_BUFFER
+  Endcase
+ Else
+  NBRSEQ = 0 : Gosub SEQ_NORMAL
+ Endif
+ If GOK<1 : Break : Endif
+ SEQUENCE = mod(SEQUENCE,VALMAX+1)
+Until SEQUENCE<>0
+If GOK<1 : End : Endif
+Gosub ATTRIB_NUMERO
+
+#93589
+## Point d'entrée pour Retravailler le compteur
+GPE = 0
+GPOINT = "NUMEROCHG" : Gosub ENTREE From EXEFNC
+If GPE : End : Endif
+
+End
+
+#---------------------------------------#
+$ATTRIB_NUMERO
+VALEUR = ""
+For I=0 To [F:ANM]NBPOS-1
+ Case [F:ANM]POSTYP(I)
+  When 1 : # Constante
+   VALEUR += [F:ANM]POSCTE(I)
+  When 2 : # Année
+   Case [F:ANM]POSLNG(I)
+    When 1 : VALEUR += num$(mod(year(DAT),10))
+    When 2 : VALEUR += format$("N0:2#",mod(year(DAT),100))
+    When 4 : VALEUR += format$("N0:4#",year(DAT))
+   Endcase
+  When 3 : # Mois
+   Case [F:ANM]POSLNG(I)
+    When 2 : VALEUR += format$("N0:2#",month(DAT))
+    When 3 : VALEUR += format$("D:MMM",DAT)
+   Endcase
+  When 4 : # Semaine
+   VALEUR += format$("N0:2#",week(DAT))
+  When 5 : # Jours
+   Case [F:ANM]POSLNG(I)
+    When 1 : VALEUR += num$(dayn(DAT))
+    When 2 : VALEUR += format$("N0:2#",day(DAT))
+    When 3 : VALEUR += format$("N0:3#",DAT-gdat$(1,1,year(DAT))+1)
+   Endcase
+  When 6 : # Société
+   Gosub SETSOC
+   If len(SOC)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+    VALEUR += SOC+string$([F:ANM]POSLNG(I)-len(SOC),"_")
+   Else
+    VALEUR += left$(SOC,[F:ANM]POSLNG(I))
+   Endif
+  When 7 : # Site
+   If len(SITE)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+    VALEUR += SITE+string$([F:ANM]POSLNG(I)-len(SITE),"_")
+   Else
+    VALEUR += left$(SITE,[F:ANM]POSLNG(I))
+   Endif
+  When 8 : # Séquence
+   If SEQUENCE>val(string$([F:ANM]POSLNG(I),"9"))
+    STAT = 2 : GOK = 0
+   Endif
+   VALEUR += format$("N0:"+num$([F:ANM]POSLNG(I))+"#",SEQUENCE)
+  When 9 : # Complément
+   If [F:ANM]POSLNG(I)=0
+    If len(COMP)>0 & [F:ANM]CTLCHR=2
+     STAT = 4 : GOK = 0
+    Endif
+    VALEUR += COMP
+   Else
+    If len(COMP)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+     STAT = 4 : GOK = 0
+    Endif
+    VALEUR += left$(COMP,[F:ANM]POSLNG(I))
+   Endif
+  When 10 : # Exercice
+   Case GPRODUIT
+    When 0
+     Local Decimal PER , EXE : Raz PER , EXE
+     If clalev([F:PER])=0  : Local File PERIOD [PER] : Endif
+     Gosub SETSOC
+     K = find(GCM,GGCM(1..GGCMNBR))
+     If K
+      #CHECK UNUSED_BEGIN
+      If dim([L]LEDTYP)>0 and [L]LEDTYP>0
+       Call GETPERSOC(SOC,[L]LEDTYP,DAT,EXE,PER) From CPTSUB
+      Elsif dim(GLEDTYPGEN)>0
+       Call GETPERSOC(SOC,GLEDTYPGEN(K),DAT,EXE,PER) From CPTSUB
+      Else
+       Call GETPERSOC(SOC,DAT,EXE,PER) From CPTSUB
+      Endif
+      #CHECK UNUSED_END
+     Endif
+     If EXE>0
+      VALEUR += format$("N0:"+num$([F:ANM]POSLNG(I))+"#",EXE)
+     Else
+      STAT = 3 : GOK = 0
+     Endif
+    When Default
+     Case [F:ANM]POSLNG(I)
+      When 1 : VALEUR += num$(mod(year(DAT),10))
+      When 2 : VALEUR += format$("N0:2#",mod(year(DAT),100))
+      When 4 : VALEUR += format$("N0:4#",year(DAT))
+     Endcase
+   Endcase
+  When 11 : # Période
+   Case GPRODUIT
+    When 0
+     Local Decimal PER , EXE : Raz PER , EXE
+     If clalev([F:PER])=0  : Local File PERIOD [PER] : Endif
+     Gosub SETSOC
+     K = find(GCM,GGCM(1..GGCMNBR))
+     If K
+      #CHECK UNUSED_BEGIN
+      If dim([L]LEDTYP)>0 and [L]LEDTYP>0
+       Call GETPERSOC(SOC,[L]LEDTYP,DAT,EXE,PER) From CPTSUB
+      Elsif dim(GLEDTYPGEN)>0
+       Call GETPERSOC(SOC,GLEDTYPGEN(K),DAT,EXE,PER) From CPTSUB
+      Else
+       Call GETPERSOC(SOC,DAT,EXE,PER) From CPTSUB
+      Endif
+      #CHECK UNUSED_END
+     Endif
+     If EXE>0
+      VALEUR += format$("N0:"+num$([F:ANM]POSLNG(I))+"#",PER)
+     Else
+      STAT = 3 : GOK = 0
+     Endif
+    When Default
+     VALEUR += format$("N0:"+num$([F:ANM]POSLNG(I))+"#",month(DAT))
+   Endcase
+  When 12 : # Formule
+   Onerrgo RIEN
+   FORMU   = evalue([F:ANM]POSCTE(I))
+   Onerrgo
+   VALEUR += format$("K:"+num$([F:ANM]POSLNG(I))+"X",toupper(FORMU))
+ Endcase
+Next I
+If [F:ANM]TYP=2
+ VALEUR = num$(val(VALEUR))
+Endif
+Return
+
+#---------------------------------------#
+$RIEN
+Resume
+
+#---------------------------------------#
+$SETSOC
+If clalev([F:FCY])=0 : Local File FACILITY [FCY] : Endif
+If [F:FCY]FCY<>SITE  : Read [FCY]FCY0 = SITE : Endif
+SOC = [F:FCY]LEGCPY
+# V150
+If clalev([F:CPY])=0 : Local File COMPANY [CPY] : Endif
+If [F:CPY]CPY<>SOC  : Read [CPY]CPY0 = SOC : Endif
+If dim([F:CPY]ACM)>0 : GCM = [F:CPY]ACM : Endif
+Return
+
+#--------------------------------------------------------------------------------#
+# Message d'erreurs gestion des compteurs
+#--------------------------------------------------------------------------------#
+
+$MESSAGE
+If dim(STAT)>0
+ If dim(MESSA)<=0 : Local Char MESSA(255) : Endif
+ Case STAT
+  When 1  : MESSA = mess(12,114,1)  : # Compteur inexistant
+  When 2  : MESSA = mess(13,114,1)  : # Dépassement de compteur
+  When 3  : MESSA = mess(34,113,1)  : # Exercice non ouvert
+  When 5  : MESSA = mess(62,133,1)  : # Société ou site incorrect
+  When 4  : MESSA = mess(111,123,1) : # Longueur incorrecte
+  When 6  : If GPRODUIT=1 : ## GEODE
+             MESSA = mess(79,310,1) : # Déposant inexistant
+            Endif
+  When 10 : MESSA = mess(21,143,1)  : # Format incorrect (présence d'espaces ou longueur trop grande)
+  When 99 : MESSA = mess(235,143,1) : # Erreur mise à jour compteur séquentiel  (mb 7.5.13 demande 89665)
+ Endcase
+Endif
+Return
+
+#--------------------------------------------------------------------------------#
+# Différentes méthodes d'attribution de la séquence
+#--------------------------------------------------------------------------------#
+
+$SEQ_NORMAL
+Readlock [AVN]AVN0 = COMPTEUR;SIT;PERIODE;COMP
+If fstat=1
+ If NBLEC>=MAXLEC
+  GOK=-1 : GLOCK = "$AVALNUM"-COMPTEUR-SIT-num$(PERIODE)-COMP : STAT = 99
+ Else
+  NBLEC += 1 : Sleep TEMPO
+ Endif
+ Return
+Elsif fstat
+ SEQUENCE = 1
+ Raz [F:AVN]
+ [F:AVN]CODNUM  = COMPTEUR
+ [F:AVN]SITE    = SIT
+ [F:AVN]PERIODE = PERIODE
+ [F:AVN]COMP    = COMP
+ [F:AVN]VALEUR  = 2+NBRSEQ
+ Write [AVN]
+Else
+ SEQUENCE = [F:AVN]VALEUR
+ [F:AVN]VALEUR += 1+NBRSEQ
+ Rewrite [AVN]
+Endif
+If fstat
+ GOK=0 : Call FSTA("AVN") From GLOCK : STAT = 99 : Return
+Endif
+For K=1 To NBRSEQ
+ [F:AVA] = [F:AVN]
+ [F:AVA]VALEUR = SEQUENCE+K
+ Write [AVA]
+ If fstat
+  GOK = 0 : Call FSTA("AVA") From GLOCK : Break
+ Endif
+Next K
+Return
+
+$SEQ_UNIQ
+If evalue("clalev([F:"+[F:ANM]SEQABR+"])")=0
+ Local File =[F:ANM]SEQTBL
+Endif
+SEQUENCE = evalue("uniqid([F:"+[F:ANM]SEQABR+"])")
+Return
+
+$SEQ_BUFFER
+If clalev([F:AVA])=0 : Local File AVALATT [AVA] : Endif
+SEQUENCE = 0
+For [AVA]AVA0 Where CODNUM=COMPTEUR & SITE=SIT & PERIODE=[L]PERIODE & COMP=[L]COMP
+ Readlock [AVA]AVA0 Curr With lockwait=0
+ If fstat=0
+  SEQUENCE = [F:AVA]VALEUR
+  Delete [AVA]
+  Break
+ Endif
+Next
+If SEQUENCE=0
+ NBRSEQ = [F:ANM]SEQNBR
+ Gosub SEQ_NORMAL
+Endif
+Return
+
+#--------------------------------------------------------------------------------#
+# Programme de vérification de la longueur des compteurs
+#--------------------------------------------------------------------------------#
+
+Subprog VERF_PARAM(PARAM,COMPTEUR,OK)
+Value    Char    PARAM
+Value    Char    COMPTEUR
+Variable Integer OK
+OK = 1
+If clalev([F:ANM])=0 : Local File ACODNUM [ANM] : Endif
+Call LECTURE("ANM",COMPTEUR,"") From CONTOBJ
+If !fstat & [F:ANM]LNG>GLONVCR
+ GMESSAGE = COMPTEUR-":"-mess(51,105,1)-"("+mess(74,124,1)-num$(GLONVCR)+")"
+# Compteur de longueur trop grande (maximum)
+ OK = 0
+Endif
+End
+
+#--------------------------------------------------------------------------------#
+## Renvoie le numéro précédent
+#--------------------------------------------------------------------------------#
+# si VALEUR est renseigné, retourne VALEUR-1,
+# sinon, renvoie le dernier numéro créé
+#--------------------------------------------------------------------------------#
+
+Subprog NUMERO_PREC(COMPTEUR,SITE,DAT,COMP,VALEUR,SEQ,STAT)
+Value    Char    COMPTEUR
+Value    Char    SITE
+Value    Date    DAT
+Value    Char    COMP
+Variable Char    VALEUR()
+Variable Integer SEQ
+Variable Integer STAT
+Local Integer LNG, DEPL
+Local Char CHAINE(20)
+SEQ = 0 : STAT = 0
+If clalev([F:ANM])=0 : Local File ACODNUM [ANM] : Endif
+If clalev([F:AVN])=0 : Local File AVALNUM [AVN] : Endif
+Read [ANM]ANM0 = COMPTEUR
+If fstat
+ Call RSTA("ANM",COMPTEUR) From GLOCK
+ STAT = 1 : GOK = 0 : End
+Endif
+# On décrémente de 1 le numéro de séquence du compteur
+DEPL=1 : LNG=0 : I=0
+If VALEUR <> ""
+ While ([F:ANM]POSTYP(I)<>8) & (I<=[F:ANM]NBPOS-1)
+  DEPL += [F:ANM]POSLNG(I)
+  I += 1
+ Wend
+ If I<=[F:ANM]NBPOS-1 : LNG = [F:ANM]POSLNG(I) : Else STAT = 99 : End : Endif
+ SEQ = val(mid$(VALEUR,DEPL,LNG))
+ If SEQ = 0 : SEQ = 1
+ Elsif SEQ > 1 : SEQ -= 1 : Endif
+ CHAINE = left$(VALEUR,DEPL-1) + format$("N0:"+num$(LNG)+"#",SEQ)
+ If DEPL+LNG <= len(VALEUR)
+  CHAINE += seg$(VALEUR,DEPL+LNG,len(VALEUR)) : # mb 3.3.3 Bug 17503
+ Endif
+ VALEUR = CHAINE
+ End
+Endif
+
+Local Integer PERIODE
+Local Char    SIT(10) , SOC(10)
+
+If !find(9,[F:ANM]POSTYP(0..[F:ANM]NBPOS-1))
+ COMP = ""
+Endif
+Case [F:ANM]NIVRAZ
+ When 1 : PERIODE = 0
+ When 2 : PERIODE = mod(year(DAT),100)
+ When 3 : PERIODE = 100*mod(year(DAT),100)+month(DAT)
+ When 4
+  Case GPRODUIT
+   When 0
+    Local Decimal EXE : Raz EXE
+    If clalev([F:PER])=0  : Local File PERIOD [PER] : Endif
+    Gosub SETSOC
+    K = find(GCM,GGCM(1..GGCMNBR))
+    If K
+     #CHECK UNUSED_BEGIN
+     If dim(GLEDTYPGEN)>0
+      Call GETEXE(SOC,GLEDTYPGEN(K),DAT,EXE) From CPTSUB
+     Else
+      Call GETEXE(SOC,DAT,EXE) From CPTSUB
+     Endif
+     #CHECK UNUSED_END
+    Endif
+    If EXE>0
+     PERIODE = EXE
+    Else
+     STAT = 3 : GOK = 0 : End
+    Endif
+   When Default
+    PERIODE = 100*mod(year(DAT),100)+month(DAT)
+  Endcase
+Endcase
+Case [F:ANM]NIVDEF
+ When 1   : SIT = ""
+ When 2   : Gosub SETSOC : SIT = SOC
+ When 3   : SIT = SITE
+Endcase
+Read [AVN]AVN0 = COMPTEUR;SIT;PERIODE;COMP
+If !fstat
+ SEQUENCE = [F:AVN]VALEUR-1
+Elsif fstat=5
+ SEQUENCE = 1
+Endif
+SEQ = SEQUENCE
+VALEUR = ""
+For I=0 To [F:ANM]NBPOS-1
+ Case [F:ANM]POSTYP(I)
+  When 1 : # Constante
+   VALEUR += [F:ANM]POSCTE(I)
+  When 2 : # Année
+   Case [F:ANM]POSLNG(I)
+    When 1 : VALEUR += num$(mod(year(DAT),10))
+    When 2 : VALEUR += format$("N0:2#",mod(year(DAT),100))
+    When 4 : VALEUR += format$("N0:4#",year(DAT))
+   Endcase
+  When 3 : # Mois
+   Case [F:ANM]POSLNG(I)
+    When 2 : VALEUR += format$("N0:2#",month(DAT))
+    When 3 : VALEUR += format$("D:MMM",DAT)
+   Endcase
+  When 4 : # Semaine
+   VALEUR += format$("N0:2#",week(DAT))
+  When 5 : # Jours
+   Case [F:ANM]POSLNG(I)
+    When 1 : VALEUR += num$(dayn(DAT))
+    When 2 : VALEUR += format$("N0:2#",day(DAT))
+    When 3 : VALEUR += format$("N0:3#",DAT-gdat$(1,1,year(DAT))+1)
+   Endcase
+  When 6 : # Société
+   Gosub SETSOC
+   If len(SOC)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+    VALEUR += SOC+string$([F:ANM]POSLNG(I)-len(SOC),"_")
+   Else
+    VALEUR += left$(SOC,[F:ANM]POSLNG(I))
+   Endif
+  When 7 : # Site
+   If len(SITE)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+    VALEUR += SITE+string$([F:ANM]POSLNG(I)-len(SITE),"_")
+   Else
+    VALEUR += left$(SITE,[F:ANM]POSLNG(I))
+   Endif
+  When 8 : # Séquence
+   If SEQUENCE>val(string$([F:ANM]POSLNG(I),"9"))
+    STAT = 2 : GOK = 0
+   Endif
+   VALEUR += format$("N0:"+num$([F:ANM]POSLNG(I))+"#",SEQUENCE)
+  When 9 : # Complément
+   If [F:ANM]POSLNG(I)=0
+    If len(COMP)>0 & [F:ANM]CTLCHR=2
+     STAT = 4 : GOK = 0
+    Endif
+    VALEUR += COMP
+   Else
+    If len(COMP)<[F:ANM]POSLNG(I) & [F:ANM]CTLCHR=2
+     STAT = 4 : GOK = 0
+    Endif
+    VALEUR += left$(COMP,[F:ANM]POSLNG(I))
+   Endif
+ Endcase
+Next I
+If [F:ANM]TYP=2
+ VALEUR = num$(val(VALEUR))
+Endif
+End
+
+#-----------------------------------------------------------------------#
+# Etiquettes écran
+#-----------------------------------------------------------------------#
+
+Subprog C_CTLCHR(VALEUR)
+Variable Integer VALEUR
+If [M]TYP=2 : VALEUR = 1 : Endif
+End
+
+Subprog C_TYP(VALEUR)
+Variable Integer VALEUR
+If VALEUR = 2 : [M]CTLCHR = 1 : Endif
+End
+
+Subprog C_LNG(VALEUR)
+Variable Decimal VALEUR
+End
+
+Subprog C_NIVDEF(VALEUR)
+Variable Integer VALEUR
+End
+
+Subprog AS_SEQDEP(VALEUR)
+Variable Integer VALEUR
+If [M]NIVDEF<3 : VALEUR=1 : mkstat=2 : Endif
+End
+
+Subprog C_NIVRAZ(VALEUR)
+Variable Integer VALEUR
+If [M]NIVDEF=1 & (VALEUR=4 or VALEUR=5)
+ GMESSAGE = mess(57,126,1) : # Impossible au niveau dossier
+ mkstat = 2 : End
+Endif
+End
+
+Subprog C_POSTYP(VALEUR)
+Variable Integer VALEUR
+If [M]TYP=2
+ If find(VALEUR,6,7)
+  GMESSAGE = mess(127,123,1) : mkstat=2 : End
+# Donnée non numérique
+ Endif
+Endif
+If [M]NIVDEF=1 & (VALEUR=10 or VALEUR=11)
+ GMESSAGE = mess(57,126,1) : # Impossible au niveau dossier
+ mkstat = 2 : End
+Endif
+End
+
+Subprog D_POSLNG(VALEUR)
+Variable Decimal VALEUR
+Case [M]POSTYP(nolign-1)
+ When 1 : VALEUR = 3       : # Constante
+ When 2 : VALEUR = 2       : # Année
+ When 3 : VALEUR = 2       : # Mois
+ When 4 : VALEUR = 2       : # Semaine
+ When 5 : VALEUR = 2       : # Jours
+ When 6 : VALEUR = GLONCPY : # Société
+ When 7 : VALEUR = GLONFCY : # Site
+ When 8 : VALEUR = 8       : # Séquence
+ When 9 : VALEUR = 5       : # Complément
+ When 10: VALEUR = 1       : # Exercice
+ When 11: VALEUR = 2       : # Période
+ When 12: VALEUR = 3       : # Formule
+Endcase
+End
+
+Subprog AS_POSLNG(VALEUR)
+Variable Decimal VALEUR
+If [M]POSTYP(nolign-1)=4 : mkstat=2 : End : Endif
+End
+
+Subprog C_POSLNG(VALEUR)
+Variable Decimal VALEUR
+Local Integer OK , T , S
+OK = 1
+Case [M]POSTYP(nolign-1)
+ When 1 : If VALEUR=0 or VALEUR>20      : OK = 0 : Endif       : # Constante
+ When 2 : If !find(VALEUR,1,2,4)        : OK = 0 : Endif       : # Année
+ When 3 : If !find(VALEUR,2,3)          : OK = 0 : Endif       : # Mois
+ When 4 : If VALEUR<>2                  : OK = 0 : Endif       : # Semaine
+ When 5 : If !find(VALEUR,1,2,3)        : OK = 0 : Endif       : # Jours
+ When 6 : If VALEUR=0 or VALEUR>GLONCPY : OK = 0               : # Société
+          Elsif VALEUR<GLONCPY          : S  = 2 : T = GLONCPY : Endif
+ When 7 : If VALEUR=0 or VALEUR>GLONFCY : OK = 0               : # Site
+          Elsif VALEUR<GLONFCY          : S  = 3 : T = GLONFCY : Endif
+ When 8 : If VALEUR<3 or VALEUR>20      : OK = 0 : Endif       : # Séquence
+ When 9 : If VALEUR>20                  : OK = 0 : Endif       : # Complément
+ When 10: If VALEUR=0 or VALEUR>3       : OK = 0 : Endif       : # Exercice
+ When 11: If VALEUR=0 or VALEUR>3       : OK = 0 : Endif       : # Période
+ When 12: If VALEUR=0 or VALEUR>20      : OK = 0 : Endif       : # Formule
+Endcase
+If !OK
+ GMESSAGE = mess(83,123,1) : mkstat = 2 : End : # Valeur incorrecte
+Endif
+If S
+ # Il fortement recommandé d'utiliser la taille maximum ($1$ caractères) du champ $2$ pour éviter des doublons
+ OK = 1 : Call AVERTIR(func AFNC.MES2(mess(273,139,1),num$(T),mess(S,45,1)),OK) From GESECRAN
+ If OK<>2 : mkstat = 1 : End : Endif
+Endif
+[M]LNG = sum([M]POSLNG(0..nolign-2))+sum([M]POSLNG(nolign,[M]NBPOS-1))+VALEUR
+Affzo LNG
+End
+
+Subprog APRES_NBPOS
+[M]LNG = sum([M]POSLNG(0..max(nolign,[M]NBPOS)-1))
+Affzo LNG
+End
+
+Subprog AS_POSCTE(VALEUR)
+Variable Char    VALEUR()
+If !find([M]POSTYP(nolign-1),1,12) : mkstat=1 : End : Endif
+End
+
+Subprog C_POSCTE(VALEUR)
+Variable Char    VALEUR()
+Case [M]POSTYP(nolign-1)
+ When 1
+  If [M]TYP=2 & num$(val(VALEUR))<>VALEUR
+   GMESSAGE = mess(127,123,1) : # Donnée non numérique
+   mkstat=1 : End
+  Elsif TYP=1
+   VALEUR = toupper(VALEUR)
+  Endif
+  VALEUR = left$(VALEUR+"000000000000000000000",[M]POSLNG(nolign-1))
+ When 12
+  Local Integer E
+  VALEUR = vireblc(format$("KT:250X",VALEUR),2)
+  E = parse(VALEUR)
+  If E
+   GMESSAGE = mess(37,124,1)+"\"+errmes$(E)
+   mkstat = 2 : End
+  Endif
+Endcase
+End
+
+Subprog AS_SEQ(VALEUR)
+Variable Integer VALEUR
+End
+
+Subprog C_SEQ(VALEUR)
+Variable Integer VALEUR
+If VALEUR=2
+ If [M]NIVDEF<>1
+  GMESSAGE = mess(96,133,1) : # Type de séquence possible au niveau dossier
+  mkstat = 2 : End
+ Elsif [M]NIVRAZ<>1
+  GMESSAGE = mess(97,133,1) : # Type de séquence possible sans RAZ
+  mkstat = 2 : End
+ Endif
+Endif
+Case VALEUR
+ When 2
+  Actzo SEQTBL
+  Effzo SEQNBR
+  Grizo SEQNBR
+ When 3
+  Actzo SEQNBR
+  Effzo SEQTBL
+  Grizo SEQTBL
+ When 1
+  Effzo SEQNBR,SEQTBL
+  Grizo SEQNBR,SEQTBL
+Endcase
+End
+
+Subprog AS_SEQTBL(VALEUR)
+Variable Char VALEUR()
+If [M]SEQ<>2    : mkstat = 1 : End : Endif
+End
+
+Subprog C_SEQTBL(VALEUR)
+Variable Char    VALEUR()
+Read [ATB]CODFIC = VALEUR
+If [F:ATB]TYPFIC=3
+ GMESSAGE = mess(104,139,1)-":"-mess([F:ATB]TYPFIC,39,1) : # Type de table = Système
+ mkstat = 2 : End
+Endif
+End
+
+######################################################################################
+## Etiquette ajoutée par le superviseur (écran ANM1) 04/10/2013 15:27:12 (CCL)
+######################################################################################
+Subprog C_LEG(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR<>""
+ Local File TABCOUAFF [TCA]
+  Local File COMPANY [CPY]
+ Local Integer K
+ For [TCA] Where find([M:ANM1]CODNUM,CODNUM)>0 & LEG<>"" & CPY=""
+  If [TCA]LEG<>"" & [TCA]LEG<>VALEUR
+   K =1 : Break
+  Endif
+ Next
+ If !K
+  For [TCA] Where CODNUM=[M:ANM1]CODNUM & LEG="" & CPY<>""
+   Read [CPY]CPY0 = [F:TCA]CPY
+   If !fstat
+    If [F:CPY]LEG<>"" & [F:CPY]LEG<>VALEUR
+     K =1 : Break
+    Endif
+   Endif
+  Next
+ Endif
+ If K
+  Local Integer OK
+  Call AVERTIR("TEX", OK) From GESECRAN
+  If OK<>2
+   mkstat = 2 : End
+  Endif
+ Endif
+Endif
+
+End
+
+
+######################################################################################
+

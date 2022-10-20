@@ -1,0 +1,40 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ 
+# Gestión de la máscara AIMP1 (Especifico)
+
+######################################################################################
+## 05.867.011 - DESTINO MAIL SI CLIENT ENVIO FACTURA PDF I INFORME ZFACVEN
+######################################################################################
+Subprog C_PRT(VALEUR)
+Variable Char    VALEUR()
+
+# If GFONCTION="GESSIH" & clalev([M:SIH0]) & [M]RPTCOD="ZFACVEN"
+#    If [M:SIH0]BPCINV<>[F:BPC]BPCNUM
+#       Read [F:BPC]BPC0=[M:SIH0]BPCINV
+#    Endif
+#    If [F:BPC]ZENVFACPDF=2 & [F:BPC]BPCNUM="02858"
+#       VALEUR = "ENVIOMAIL"
+#       Affzo [M:RPT]PRT
+#    Endif
+# Endif
+
+End
+######################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

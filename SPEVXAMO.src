@@ -1,0 +1,50 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Salidas Varias
+# Gestión de la máscara VXAMO (Especifico)
+
+######################################################################################
+## Después de Campo ZCODBAR
+######################################################################################
+Subprog AP_ZCODBAR(VALEUR)
+Variable Char    VALEUR()
+
+Call LEERCODIGODEBARRASSALIDAVARIA(VALEUR) From SPEUTILSATUCESA
+
+If num$(ZLCODLOT) <> "-" and num$(ZLCODITM)<> "-" and num$(ZLCANT)<>"0"
+  [M:XAMO]ZCODBAR = num$(ZLCODLOT)+"-"+num$(ZLCODITM)+"-"+num$(ZLCANT)
+  Affzo [M:XAMO]ZCODBAR
+Endif
+End
+
+######################################################################################
+
+######################################################################################
+## Antes de entrada ITMREF
+######################################################################################
+Subprog AS_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:XAMO]ITMREF = ZLCODITM
+Affzo [M:XAMO]ITMREF
+End
+
+######################################################################################
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla VXAMO) 18/01/2018 18:01:04 (ADMIN)
+######################################################################################
+Subprog AS_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+[M:XAMO]QTYPCU = ZLCANT
+Affzo [M:XAMO]QTYPCU
+
+End
+
+Subprog AS_LOT(VALEUR)
+Variable Char    VALEUR()
+[M:XAMO]LOT = ZLCODLOT
+Affzo [M:XAMO]LOT
+End
+
+
+######################################################################################
+

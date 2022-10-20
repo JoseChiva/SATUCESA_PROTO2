@@ -1,0 +1,25 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ 
+# Gestión de la máscara BPABPC (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla BPABPC) 22/11/2019 12:41:43 (ADMIN)
+######################################################################################
+$ACTION
+Case ACTION
+ When default
+Endcase
+Return
+
+Subprog AM_XZENVMAILING(VALEUR)
+Variable Integer VALEUR
+
+   [M]ZENVMAILING=VALEUR
+
+End
+
+
+######################################################################################
+
+
+
+

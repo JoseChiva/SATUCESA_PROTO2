@@ -1,0 +1,14 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)0.0.0.0 $Revision$
+$ACTION
+  Case ACTION
+    When "CHARGLIGPTH" Gosub ASIGNALOTE
+  Endcase
+Return
+###############################################
+$ASIGNALOTE
+#Infbox("ASIGNALOTE" + num$(NOL))
+#[M:PTH1]LOT(NOL) = [M:PTH1]POHNUM(NOL)
+#Affzo[M:PTH1]
+Return
+

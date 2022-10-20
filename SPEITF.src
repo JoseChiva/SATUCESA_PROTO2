@@ -1,0 +1,62 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ Artículos - planta
+#FPH - 6.096.886: Ubicación por defecto en todos los artículos
+$ACTION
+Case ACTION
+  
+  When Default
+Endcase
+Return
+ 
+
+#6.096.886>
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla ITF0) 18/09/2020 12:29:17 (ADMIN)
+######################################################################################
+Subprog AM_STOFCY(VALEUR)
+Variable Char    VALEUR()
+  IF VALEUR ='SA' THEN
+    [M:ITF1]DEFLOCTYP(0)='MUE'
+    [M:ITF1]DEFLOC   (0)='0000'
+    Affzo [M:ITF1]DEFLOCTYP(0)
+    Affzo [M:ITF1]DEFLOC(0)
+  ENDIF
+End
+
+
+ 
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla ITF1) 18/09/2020 12:34:19 (ADMIN)
+######################################################################################
+Subprog C_DEFLOCTYP(VALEUR)
+   Variable Char    VALEUR() 
+ 
+   IF INDICE = 0 AND VALEUR <> 'MUE' AND LOCMGTCOD =2 AND STOFCY ='SA' THEN
+     Call message("El tipo de ubicación debe ser MUE") From GESECRAN
+     MKSTAT = 2 
+   ENDIF
+End
+
+Subprog C_DEFLOC(VALEUR)
+   Variable Char    VALEUR()
+   IF INDICE = 0 AND VALEUR <> '0000' AND LOCMGTCOD =2 AND STOFCY ='SA' THEN
+     Call message("La ubicación debe ser 0000") From GESECRAN
+     MKSTAT = 2 
+   ENDIF
+End
+
+
+######################################################################################
+#6.096.886<
+
+
+
+
+
+
+
+
+
+
+
+
+

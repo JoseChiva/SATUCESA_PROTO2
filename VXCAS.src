@@ -1,0 +1,190 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)8.0.0.0 $Revision$
+#consultation des articles site par terminaux VT
+########################################################
+$ACTION
+#Call REGISTRAACCION(ACTION) From SPEUTILSATUCESA
+
+#--- Actions liées à la fenêtre de saisie
+
+Case ACTION
+ When "OUVRE"         : Gosub OUVRE
+ When "DEBUT"         : Gosub DEBUT
+ When "APRES_MODIF"   : Gosub APRES_MODIF
+ When "BOUTON"        : Gosub BOUTON
+ When "SETBOUT"       : Gosub SETBOUT
+ When "FIN"           : Gosub FIN
+
+Endcase
+
+Return
+
+########################################################
+# Actions liées à la fenètre de saisie
+########################################################
+
+########################################################
+$OUVRE
+
+Local Char WFIL(250)
+Local Char WFILS(250)
+Local Char WFILA(250)
+Local Char SVGLOT(GLONLOT)
+Local Char SVGSLO(GLONSLO)
+Local Char SVGLOC(GLONLOC)
+Local Char SVGITM(GLONITM)  # hcb 65909
+
+
+
+If clalev([F:STO1]) = 0 : Local File STOCK      [STO1] : Endif
+If clalev([F:ITF]) = 0 : Local File ITMFACILIT [ITF] : Endif
+GVTMOD=1
+
+# Initialisation du site de stock
+Gosub INIT_STOFCY From ENVADC
+
+Return
+
+########################################################
+$DEBUT
+
+Local Integer WOK, WCPT, LRET
+Local Decimal WSVGQTY
+
+If GXAFCY=""
+   Call ERREUR(mess(16,7750,1)) From GESECRAN : FIN=1 : Return
+Endif
+
+Raz [M:XCAS]
+
+Return
+########################################################
+$APRES_MODIF
+WFILS = "1=1"
+
+Gosub REMP_TAB
+
+Return
+########################################################
+$BOUTON
+
+# page suivante
+
+If BOUT="1" Gosub PAGESUIV Endif
+
+If BOUT="2" Gosub ARTSUIV Endif
+
+Return
+
+########################################################
+$REMP_TAB
+SVGITM = [M:XCAS]ITMREF  # hcb 65909
+Raz [M:XCAS]             # hcb 65909
+[M:XCAS]ITMREF = SVGITM  # hcb 65909
+
+WFIL= "1=1"
+If [M:XCAS]ITMREF <> ""
+         WFIL += "& [F:STO1]ITMREF=[M:XCAS]ITMREF"
+Endif
+
+If GXAFCY <> ""
+    WFIL += "& [F:STO1]STOFCY = GXAFCY"
+Endif
+
+
+
+Filter [STO1] Where evalue(WFIL) & evalue(WFILS)
+&                            Order By Key STO3 Asc
+
+nolign = 0
+Raz [M:XCAS]NBLIG
+For [STO1]
+    If nolign < dim([M:XCAS]STA)
+        nolign += 1
+        [M:XCAS]LOT(nolign-1)=[F:STO1]LOT
+        [M:XCAS]SLO(nolign-1)=[F:STO1]SLO
+        [M:XCAS]SERNUM(nolign-1)=[F:STO1]SERNUM
+        [M:XCAS]LOC(nolign-1)=[F:STO1]LOC
+        [M:XCAS]QTYPCU(nolign-1)=[F:STO1]QTYPCU
+        [M:XCAS]PCU(nolign-1)=[F:STO1]PCU
+        [M:XCAS]QTYSTU(nolign-1)=[F:STO1]QTYSTU
+        [M:XCAS]CUMALLQTY(nolign-1)=[F:STO1]CUMALLQTY
+        [M:XCAS]STA(nolign-1)=[F:STO1]STA
+        [M:XCAS]PALNUM(nolign-1)=[F:STO1]PALNUM
+        [M:XCAS]CTRNUM(nolign-1)=[F:STO1]CTRNUM
+        [M:XCAS]QLYCTLDEM(nolign-1)=[F:STO1]QLYCTLDEM
+        [M:XCAS]OWNER(nolign-1)=[F:STO1]OWNER
+        [M:XCAS]NBLIG+=1
+        #sauvegarde des infos de la derniere ligne du tableau
+        SVGLOT = [M:XCAS]LOT(nolign-1)
+        SVGSLO = [M:XCAS]SLO(nolign-1)
+        SVGLOC = [M:XCAS]LOC(nolign-1)
+    Endif
+Next
+
+Filter[STO1]   # hcb 59424 suite
+Affzo[M]1-99
+#---
+
+Return
+
+########################################################
+$PAGESUIV
+WFILS="(([F:STO1]LOT = SVGLOT  & [F:STO1]SLO = SVGSLO & [F:STO1]LOC > SVGLOC )"
+WFILS += "|([F:STO1]LOT = SVGLOT  & [F:STO1]SLO > SVGSLO )"
+WFILS += "|([F:STO1]LOT > SVGLOT ))"
+
+Gosub REMP_TAB
+Return
+########################################################
+$ARTSUIV
+
+WFILS = "1=1"
+If [M:XCAS]ITMREF <> ""
+
+    WFILA = "[F:ITF]STOFCY=GXAFCY & [F:ITF]ITMREF >[M:XCAS]ITMREF "
+        Filter [ITF] Where evalue(WFILA)
+&                            Order By [F:ITF]STOFCY;[F:ITF]ITMREF Asc
+
+    Read[ITF]First
+    If fstat = 4
+       Call VIREBOUT(CHMEN, '2') From GOBJET
+    Elsif fstat = 0
+        [M:XCAS]ITMREF = [F:ITF]ITMREF
+        Gosub REMP_TAB
+    Endif
+
+    Filter[ITF]
+Endif
+
+Return
+
+########################################################
+$SETBOUT
+
+If [M:XCAS]NBLIG < dim([M:XCAS]STA)
+   Call VIREBOUT(CHMEN, '1') From GOBJET
+Else
+   CHMEN += '1'
+Endif
+
+
+Return
+########################################################
+$FIN
+GVTMOD=0
+
+Return
+
+
+########################################################
+# Actions champs
+########################################################
+######################################################################################
+## Etiquette ajoutée par le superviseur (écran VXCAS) 09/07/2008 13:31:47 (MAE)
+######################################################################################
+Subprog AP_ITMREF(VALEUR)
+Variable Char    VALEUR()
+[M:XCAS]ITMREF = VALEUR
+End
+

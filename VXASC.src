@@ -1,0 +1,513 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#<AdxTL>@(#)0.0.0.0 $Revision$
+####################################################################################
+# Program Name: VXASC
+# Description : ADC Stock Change
+# Author      : Deutschbauer/Bromley
+# Date        : February 17th, 2006
+####################################################################################
+
+Local Char PARAM(10)(1..2) , VALEUR(10)
+
+Call SAISIE_CHAR(VALEUR,PARAM,"XASC","XASC","XWVXASC") From GSAISIE
+End
+
+########################################################
+# Stock Change
+########################################################
+#
+# Necessary field in the VT Screen
+# --------------------------------
+# STOFCY, FCYDES, ITMREF,
+# PCU, QTYPCU, STU, QTYSTUDES, PCUSTUCOE
+# STA, LOC, LOT, SLO, PALNUM, CTRNUM, SERNUM, SERNUMF
+# STADES, LOCDES, LOCTYPDES
+# PCUDES, COEDES, QTYPCUDES
+# WSTOSEQ, WLOCSEQ
+
+# Necessary value in Entry transaction
+# ------------------------------------
+# Field 'Movement type'  --> Internal
+# Field 'Form'           --> No print
+# Field 'Change units    --> No
+#
+# VXASC is the VT screen
+#
+########################################################
+
+########################################################
+$ACTION
+
+#--- Actions liées à la fenêtre de saisie
+Case ACTION
+ When "OUVRE"         : Gosub OUVRE
+ When "DEBUT"         : Gosub DEBUT
+ When "SETBOUT"       : Gosub SETBOUT
+ When "AVANT_OK"      : Gosub AVANT_OK
+ When "OK"            : Gosub OK
+ When "BOUTON"        : Gosub BOUTON
+ When "END"           : Gosub CHECK
+ When "FIN"           : Gosub FIN
+Endcase
+
+Return
+
+########################################################
+# Actions liées à la fenètre de saisie
+########################################################
+
+########################################################
+$OUVRE
+
+GVTMOD=1
+
+# Initialisation du site de stock
+Gosub INIT_STOFCY From ENVADC
+Local Integer TUNNEL            #--- Lot V01
+Gosub OUVRE_SCS From ENVADC
+
+Return
+
+########################################################
+$DEBUT
+
+Local Integer WOK, WCPT
+
+# GFLAG contains the stock change transaction
+GFLAG = func ENVADC.SETTRANS(3)
+
+[M:XASC]SRTNUM = GFLAG
+
+Gosub DEBUT_SCS From ENVADC
+
+Gosub INIT_SCREEN
+
+If GXAFCY=""
+   Call ERREUR(mess(16,7750,1)) From GESECRAN : FIN=1 : Return
+Endif
+
+Return
+
+########################################################
+$SETBOUT
+
+If !find("O",CHBOU) CHBOU+="O" Endif
+If !find("1",CHMEN) CHMEN+="1" Endif
+
+Return
+
+########################################################
+$AVANT_OK
+
+If [M:XASC]ITMREF="" | [M:XASC]PCU="" | [M:XASC]QTYPCU<=0
+   GMESSAGE=mess(17,7750,1)
+Else
+   Gosub AVANT_OK_SCS From ENVADC
+   If LRET=1
+      GMESSAGE=mess(21,7750,1) # "No stock corresponding to the entry"
+   Elsif LRET=2
+      GMESSAGE=mess(20,7750,1) # "Quantity greater than the available stock"
+   Elsif LRET=3
+      GMESSAGE=mess(19,7750,1) # "Stock with quality control"
+   Elsif LRET=4
+      GMESSAGE=mess(18,7750,1) # "No change: location, status and unit are the same"
+   Endif
+Endif
+
+If GMESSAGE <> ""
+   GERR=1 : FIN=0
+   #zonsui="[M:XASC]ITMREF"   # Aelis
+   zonsui="[M:XASC]ZCODBAR"  # Aelis
+Endif
+
+Return
+
+########################################################
+$OK
+Gosub OK_SCS From ENVADC
+
+If LRET<>0
+   GERR=1 : GMESSAGE=mess(12,7750,1)
+   #zonsui="[M:XASC]ITMREF" : Return   # Aelis
+   zonsui="[M:XASC]ZCODBAR" : Return   # Aelis
+Endif
+
+[L]WCPT = [M:XASC]WCPT
+Effzo [M:XASC]1-99
+[M:XASC]WCPT   = [L]WCPT+1
+[M:XASC]STOFCY = [M:SCS1]STOFCY
+[M:XASC]FCYDES = [M:SCS1]FCYDES
+[M:XASC]SRTNUM = GFLAG
+Affzo [M:XASC]1-99
+
+#zonsui="[M:XASC]ITMREF"   # Aelis
+zonsui="[M:XASC]ZCODBAR"  # Aelis
+
+Return
+
+########################################################
+$BOUTON
+# Création
+If BOUT="1" Gosub CRE Endif
+# Abandon
+If BOUT="2" Gosub ABA Endif
+
+Return
+
+########################################################
+$ABA
+
+Call DELSTOCHGW("SCS1",[M:SCS1]STOFCY,-1,-1,1,LRET) From SUBSCSB
+Gosub INIT_SCREEN
+GREP = ""
+#zonsui="[M:XASC]ITMREF"   # Aelis
+zonsui="[M:XASC]ZCODBAR"  # Aelis
+
+Return
+
+########################################################
+$CRE
+# Si article renseigné, enregistrement de la saisie (bouton OK)
+If [M:XASC]ITMREF<>""
+   Gosub AVANT_OK
+   If GERR=1
+      Goto CRE_SUITE   # hcb 62543
+   Endif
+   Gosub OK
+   If GERR=1
+      Goto CRE_SUITE   # hcb 62543
+   Endif
+Endif
+
+If [M:SCS1]NBLIG=0
+   Call ERREUR(mess(17,7750,1)) From GESECRAN
+   #zonsui="[M:XASC]ITMREF" : Return  # Aelis
+   zonsui="[M:XASC]ZCODBAR" : Return  # Aelis
+
+Endif
+
+Call CRE_SCS From ENVADC
+#--- Lot V01
+#-----impression des étiquettes ----#
+If [F:SRT]PRNCOD1 = 2
+   Call PRINT_ETI(GXAFCY,[M:SCS1]VCRTYP,[M:SCS1]VCRNUM) From STKADC
+Endif
+
+GPROGRAMME = "GSAISIE"
+GBOITE     = BOITE
+Call NOMTRTWIN(GBOITE,WINPROG) From MSKDIV
+Gosub DEFVAR From= WINPROG
+GREP="" : REP=""
+GNOLIG = 0
+
+$CRE_SUITE    # hcb 62543
+
+Gosub INIT_SCREEN
+
+GREP = ""
+#zonsui="[M:XASC]ITMREF"    # Aelis
+zonsui="[M:XASC]ZCODBAR"    # Aelis
+
+Return
+
+########################################################
+$CHECK
+
+If [M:SCS1]NBLIG<>0
+   WOK=1
+   # Pièce en cours de saisie non enregistrée
+   Call OUINON(mess(38,7750,1),WOK) From GESECRAN
+   If WOK<>2
+      #FIN=0 : zonsui="[M:XASC]ITMREF" : Return   #Aelis
+      FIN=0 : zonsui="[M:XASC]ZCODBAR" : Return   #Aelis
+   Endif
+Endif
+
+Return
+
+########################################################
+$FIN
+
+Gosub FIN_SCS From ENVADC
+
+GVTMOD=0
+
+Return
+
+########################################################
+$INIT_SCREEN
+
+Raz [M:SCS1]
+
+# [M:SCS1]IPTDAT contains the date
+# [M:SCS1]STOFCY contains the site
+# [M:SCS1]DESFCY contains the destination site
+[M:SCS1]IPTDAT = date$
+[M:SCS1]STOFCY = GXAFCY
+[M:SCS1]FCYDES = GXAFCY
+
+Raz [M:XASC]
+
+Gosub INIT_SCS From ENVADC
+
+# Chargement du paramétrage lié au site
+If GFCY<>[M:SCS1]STOFCY
+   GFCY=[M:SCS1]STOFCY
+   Gosub CHARG_PARAM From SUBSCSA
+Endif
+
+If [F:SRT]CHGEMPCOD<>2 Diszo [M:XASC]LOCDES Endif
+If [F:SRT]CHGSTACOD<>2 Diszo [M:XASC]STADES Endif
+
+Affzo [M:XASC]1-99
+
+Return
+
+########################################################
+# Actions champs
+########################################################
+
+########################################################
+Subprog AM_SRTNUM(VALEUR)
+Variable Char    VALEUR()
+
+If [F:SRT]CHGEMPCOD=2
+   Actzo [M:XASC]LOCDES
+Else
+   Diszo [M:XASC]LOCDES
+Endif
+If [F:SRT]CHGSTACOD=2
+   Actzo [M:XASC]STADES
+Else
+   Diszo [M:XASC]STADES
+Endif
+Affzo [M:XASC]LOCDES, STADES
+
+GFLAG = VALEUR
+#--- Lot V01
+GSCSNUM = VALEUR
+
+
+[M:SCS1]TRSCOD = [F:SRT]TRSCOD
+[M:SCS1]TRSFAM = [F:SRT]TRSFAMDEF
+[M:SCS1]ENTCOD = [F:SRT]ENTCOD
+
+End
+
+########################################################
+Subprog C_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR=""
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+[M:XASC]WLOCSEQ=1
+Gosub AM_ITMREF_SCS From ENVADC
+
+End
+
+########################################################
+Subprog C_STA(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR="" & [F:ITM]SERMGTCOD<3
+   mkstat=2 : End
+Endif
+# Si statut destination vide ou pas de changement de statut
+If [M:XASC]STADES="" | [F:SRT]CHGSTACOD<>2
+   [M:XASC]STADES=VALEUR
+   Affzo [M:XASC]STADES
+Endif
+
+End
+
+########################################################
+Subprog C_LOC(VALEUR)
+Variable Char    VALEUR()
+Local Decimal LSTUACTDIS
+
+#--- Old
+#Read [F:ITV]ITV0=[M:XASC]ITMREF;GXAFCY
+#Call STODISPO("[F:ITV]",GXAFCY,[M:XASC]ITMREF,"",VALEUR,1,1,"","",LSTUACTDIS) From XENVADC
+#If LSTUACTDIS = 0 : mkstat = 2 : GMESSAGE = mess(409,197,1) : End : Endif
+
+#--- New
+If [F:ITF]LOCMGTCOD<>2 End Endif
+
+# Emplacement obligatoire si pas de no série
+If VALEUR="" & [F:ITM]SERMGTCOD<3
+   mkstat=2 : End
+Endif
+# Si emplacement destination vide ou pas de changement d'emplacement
+If [M:XASC]LOCDES="" | [F:SRT]CHGEMPCOD<>2
+   [M:XASC]LOCDES=VALEUR
+   Affzo [M:XASC]LOCDES
+Endif
+
+End
+
+########################################################
+Subprog AM_PCU(VALEUR)
+Variable Char    VALEUR()
+
+[M:XASC]PCUDES = VALEUR
+
+Gosub AM_PCU_SCS From ENVADC
+
+End
+
+########################################################
+Subprog AM_PCUSTUCOE(VALEUR)
+Variable Decimal VALEUR
+
+Gosub AM_PCUSTUCOE_SCS From ENVADC
+
+End
+
+########################################################
+Subprog C_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+Local Decimal LSTUACTDIS
+
+#--- Old
+#Read [F:ITV]ITV0=[M:XASC]ITMREF;GXAFCY
+#If fstat : End : Endif
+#Call STODISPO("[F:ITV]",GXAFCY,[M:XASC]ITMREF,"",[M:XASC]LOC,1,1,"","",LSTUACTDIS) From XENVADC
+#If LSTUACTDIS < VALEUR : mkstat = 2 : GMESSAGE = mess(148,199,1) : End : Endif
+#--- New
+If VALEUR<=0
+   mkstat=2 : End
+Endif
+
+End
+
+########################################################
+Subprog AM_QTYPCU(VALEUR)
+Variable Decimal VALEUR
+
+Gosub AM_QTYPCU_SCS From ENVADC
+
+End
+
+########################################################
+Subprog C_LOT(VALEUR)
+Variable Char    VALEUR()
+Local    Integer WLOT
+
+If clalev([F:STL])=0  Local File STOLOT   [STL]  Endif
+
+For [STL] Where ITMREF=[M:XASC]ITMREF & LOT=VALEUR
+   WLOT+=1
+   Break
+Next
+# Lot inexistant
+If WLOT=0
+   mkstat=2
+Endif
+
+End
+
+########################################################
+Subprog C_SLO(VALEUR)
+Variable Char    VALEUR()
+
+If clalev([F:STL])=0  Local File STOLOT   [STL]  Endif
+
+Read[STL]STL0=[M:XASC]ITMREF;[M:XASC]LOT;VALEUR
+If fstat
+   mkstat=2
+Endif
+
+End
+
+########################################################
+Subprog AM_SERNUM(VALEUR)
+Variable Char    VALEUR()
+
+Read [STO]STO5=[M:XASC]ITMREF;VALEUR
+If fstat
+   mkstat=2
+Else
+   If dim([M:XASC]LOT)>0    : [M:XASC]LOT=[F:STO]LOT       : Endif
+   If dim([M:XASC]SLO)>0    : [M:XASC]SLO=[F:STO]SLO       : Endif
+   If dim([M:XASC]PALNUM)>0 : [M:XASC]PALNUM=[F:STO]PALNUM : Endif
+   If dim([M:XASC]CTRNUM)>0 : [M:XASC]CTRNUM=[F:STO]CTRNUM : Endif
+   [M:XASC]STA=[F:STO]STA
+   If [M:XASC]STADES=""    : [M:XASC]STADES=[M:XASC]STA : Endif
+   If dim([M:XASC]LOC)>0
+      [M:XASC]LOC=[F:STO]LOC
+      If [M:XASC]LOCDES="" : [M:XASC]LOCDES=[M:XASC]LOC : Endif
+   Endif
+   [M:XASC]PCU       = [F:STO]PCU
+   [M:XASC]QTYPCU    = 1
+   [M:XASC]PCUSTUCOE = 1
+   [M:XASC]PCU       = [F:STO]PCU
+   [M:XASC]PCUDES    = [M:XASC]PCU
+   [M:XASC]COEDES    = [M:XASC]PCUSTUCOE
+   [M:XASC]QTYPCUDES = [M:XASC]QTYPCU
+   Affzo [M:XASC]1-99
+Endif
+
+End
+
+########################################################
+Subprog C_STADES(VALEUR)
+Variable Char    VALEUR()
+
+If VALEUR=""
+   mkstat=2 : End
+Endif
+
+Gosub C_STADES_SCS From ENVADC
+
+End
+
+##########################################################################
+Subprog AM_STADES(VALEUR)
+Variable Char    VALEUR()
+
+Local Shortint W_K : Raz W_K
+
+If [M:XASC]LOCDES<>"" & VALEUR<>""
+  If [M:XASC]LOCDES<>[F:STC]LOC
+    Read [STC]STC0=GXAFCY;[M:XASC]LOCDES
+    # Raz emplacement saisi s'il n'accepte pas ce statut
+    Call STKCTRSTA(VALEUR,[F:STC]AUZSST,0,0,0,W_K) From STKACT
+    If W_K <> 0
+      Raz [M:XASC]LOCDES
+      Raz [M:XASC]LOCTYPDES
+      Affzo [M:XASC]LOCDES
+    Endif
+  Endif
+Endif
+
+End
+
+########################################################
+Subprog AS_LOCDES(VALEUR)
+Variable Char    VALEUR()
+
+# Si uniquement changement d'emp et emp des = emp alors suggestion de l'emp des
+If [F:SRT]CHGPCUCOD<>2 & [F:SRT]CHGSTACOD<>2 & [M:XASC]LOCDES=[M:XASC]LOC
+   Raz VALEUR, [M:XASC]LOCDES, [M:XASC]LOCTYPDES
+Endif
+
+End
+
+########################################################
+Subprog C_LOCDES(VALEUR)
+Variable Char    VALEUR()
+
+[M:XASC]LOCTYPDES = [F:STC]LOCTYP
+
+End
+
+######################################################################################
+

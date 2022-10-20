@@ -1,0 +1,30 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Gestión de la máscara BPC4 (Especifico)
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla BPC4) 09/02/2018 23:48:47 (ADMIN)
+######################################################################################
+$ACTION
+Case ACTION
+ When Default
+Endcase
+Return
+
+Subprog AS_NBDLV
+
+[M:BPC4]XZOBSDIRENT = [M]ZOBSDIRENT(nolign-1)
+Affzo [M:BPC4]XZOBSDIRENT
+
+End
+
+Subprog AM_XZOBSDIRENT(VALEUR)
+Variable Char    VALEUR()
+
+[M]ZOBSDIRENT([M]XNUMLIG) = VALEUR
+[M]FLMOD([M]XNUMLIG) = 1
+
+End
+
+
+######################################################################################
+

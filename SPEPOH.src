@@ -1,0 +1,533 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ Pedidos
+######################################################################################
+# Pedidos compra
+# Gestión de la máscara POH0 (Especifico)
+# JC.11112021.ZST01 Envío mail pedido proveedor con datos adjuntos
+# 6.346.460 ML 19/07/2022 Corrección datos adjuntos de articulos
+######################################################################################
+
+
+$ACTION
+#If GUSER="ADMIN" Then Infbox ACTION Endif
+Case ACTION
+ When "SETBOUT" :Gosub SETBOUT
+ When "APRES_MOD" : Gosub APRES_MOD
+ When "APRES_CRE" : Gosub APRES_CRE
+ When "EXEBOUT"   : Gosub EXEBOUT
+ When "VERIF_MOD"   : Gosub VERIF_MOD # 6.346.460
+ When Default
+Endcase
+Return
+
+##############################################################
+######################    ACCIONES    ########################
+##############################################################
+##############################################################
+$SETBOUT
+#Call VIREBOUT(CHAINE,"BH") From GOBJET
+# 04BGA1 04BGA2 00013
+# JC.11112021.ZST01.INI
+  If GREP="A" or GREP="M" or GREP="D" Then
+    Call VIREBOUT(CHAINE,"e") From GOBJET
+  Endif
+# JC.11112021.ZST01.FIN
+Return
+
+##############################################################
+#AMG.STR  30/09/2021
+$APRES_MOD
+Gosub INSERTA_ADJUNTOS
+Return
+
+##############################################################
+$APRES_CRE
+Gosub INSERTA_ADJUNTOS
+Return
+
+##############################################################
+$EXEBOUT
+  Case BOUT
+    When "e" : Gosub ENVIA_PEDIDO       # JC.11112021.ZST01
+  Endcase
+Return
+
+# 6.346.460.ini
+##############################################################
+$VERIF_MOD
+Gosub DEL_ADJ
+Return
+# 6.346.460.fin
+
+##############################################################
+######################    ETIQUETAS    #######################
+##############################################################
+##############################################################
+##cuando se lanza APRES_MOD o APRES_CRE, actualizamos los documentos adjuntos del pedido proveedor.
+$INSERTA_ADJUNTOS
+If !clalev([F:POH]) Then : Local File PORDER [POH] : Endif
+If !clalev([VPOH]) Then : Local File ZLINPEDPROV [VPOH] : Endif ###***************CREAMOS ESTA VISTA ZLINPEDPROV ***********************
+If !clalev([F:ZAOX1]) : Local File AOBJTXT[F:ZAOX1] : Endif
+If !clalev([F:ZIAOX1]) : Local File AOBJTXT[F:ZIAOX1] : Endif
+If !clalev([F:ZACB1]) : Local File ACLOB[F:ZACB1] : Endif
+If !clalev([F:ZACB]) : Local File ACLOB[F:ZACB] : Endif
+If !clalev([F:ZABB]) : Local File ABLOB[F:ZABB] : Endif
+If !clalev([F:ZABB1]) : Local File ABLOB[F:ZABB1] : Endif
+
+If !clalev([F:ZPOQX]) : Local File PORDERQ[F:ZPOQX] : Endif # 6.346.460
+
+#buscar lista de artículos y ver si están adjuntados los documentos.
+
+Local Char ZPOHNUM(25),ZSIG(3),IDENT3(3),IDENT3C(3),IMG(150)
+Local Integer CONT1, CONT2
+
+ZPOHNUM=[M:POH0]POHNUM
+
+# 6.346.460.ini
+ #borramos todos los documentos adjuntos del pedido
+#     Trbegin [F:ZAOX1]
+#     #Delete todos los adjuntos del pedido proveedor
+#     Delete [F:ZAOX1] Where ABREV='POH' and IDENT1=ZPOHNUM
+#     If fstat =1
+#        Rollback
+#     Else
+#        Commit
+#     Endif
+#
+#     Trbegin [F:ZABB]
+#     #Delete todos los adjuntos del pedido proveedor
+#     Delete [F:ZABB] Where CODBLB='PJ_POH' and IDENT1=ZPOHNUM
+#     If fstat =1
+#        Rollback
+#     Else
+#        Commit
+#     Endif
+#
+#     Trbegin [F:ZACB]
+#     #Delete todos los adjuntos del pedido proveedor
+#     Delete [F:ZACB] Where CODBLB='PJ_POH' and IDENT1=ZPOHNUM
+#     If fstat =1
+#        Rollback
+#     Else
+#        Commit
+#     Endif
+# 6.346.460.fin
+CONT1=1
+CONT2=1
+
+Filter [VPOH] Where POHNUM=ZPOHNUM
+     For [VPOH]
+         If !fstat
+          # 6.346.460.ini
+          Filter [F:ZPOQX] Where [F:ZPOQX]POHNUM= ZPOHNUM and [F:ZPOQX]ITMREF = [VPOH]ITMREF and [F:ZPOQX]ZADJ=2
+          If rowcount([F:ZPOQX])>0 : Goto $NEXT_ADJ Endif
+          # 6.346.460.fin
+             #Infbox [VPOH]ITMREF
+             ####recorremos, buscamos por artículo si tiene adjuntos y lo añadimos a las tabla AOBJTXT
+             Filter [F:ZIAOX1] Where ABREV='ITM' and IDENT1=[VPOH]ITMREF
+                 For [F:ZIAOX1]
+                  If !fstat Then
+                  IDENT3C=[F:ZIAOX1]IDENT3
+
+                        If mid$([F:ZIAOX1]NAM,1,3)='IMG'
+                            IMG='IMG'+num$(CONT1)
+                            CONT1=CONT1+1
+
+                        Elsif mid$([F:ZIAOX1]NAM,1,3)='TEX'
+                            IMG='TEXT'+num$(CONT2)
+                            CONT2=CONT2+1
+                        Else
+                            IMG=[F:ZIAOX1]NAM
+                        Endif
+
+                  ##buscamos si ya existen registros para ese pedido en AOBJTXT
+                    Filter [F:ZAOX1] Where ABREV='POH' and IDENT1 = ZPOHNUM
+                           Read [F:ZAOX1]AOX0 Last
+                           If !fstat Then
+                             ZSIG = num$(val([F:ZAOX1]IDENT3)+1)
+                             IDENT3    = string$(3-len(ZSIG),"0")+ZSIG
+                           Else
+                             IDENT3    = "001"
+                           Endif
+                          Trbegin [F:ZAOX1]
+                             [F:ZAOX1]IDENT3     = IDENT3
+                             [F:ZAOX1]ABREV      = "POH"
+                             [F:ZAOX1]IDENT1     = ZPOHNUM
+                             [F:ZAOX1]TYPDOC     = [F:ZIAOX1]TYPDOC
+                             [F:ZAOX1]NAM        = IMG
+                             [F:ZAOX1]CAT        = [F:ZIAOX1]CAT
+                             [F:ZAOX1]CREUSR     = GUSER
+                             [F:ZAOX1]UPDUSR     = GUSER
+                             [F:ZAOX1]CREDATTIM  = date$
+                             [F:ZAOX1]UPDDATTIM  = date$
+                             [F:ZAOX1]IDTSTO = [VPOH]ITMREF # 6.346.460
+                          Write [F:ZAOX1]
+                          If !fstat Then
+                            Commit
+                          Else
+                            Rollback
+                          Endif
+
+            ####recorremos, buscamos por artículo si tiene adjuntos y lo añadimos a las tablas  ACLOB
+             Filter [F:ZACB1] Where CODBLB='PJ_ITM' and IDENT1=[VPOH]ITMREF and IDENT3=IDENT3C
+                 For [F:ZACB1]
+                  If !fstat Then
+                          Trbegin [F:ZACB]
+                             [F:ZACB]IDENT3     = IDENT3
+                             [F:ZACB]CODBLB     = "PJ_POH"
+                             [F:ZACB]IDENT1     = ZPOHNUM
+                             [F:ZACB]CNTTYP     = [F:ZACB1]CNTTYP
+                             [F:ZACB]NAMBLB     = [F:ZACB1]NAMBLB
+                             [F:ZACB]TYPDOC     = [F:ZACB1]TYPDOC
+                             [F:ZACB]CLOB       = [F:ZACB1]CLOB
+                             [F:ZACB]CREUSR     = GUSER
+                             [F:ZACB]UPDUSR     = GUSER
+                             [F:ZACB]CREDATTIM  = date$
+                             [F:ZACB]UPDDATTIM   = date$
+                          Write[F:ZACB]
+                          If !fstat Then
+                            Commit
+                          Else
+                            Rollback
+                          Endif
+                   Endif
+                 Next
+
+            ####recorremos, buscamos por artículo si tiene adjuntos y lo añadimos a las tablas  ABLOB
+             Filter [F:ZABB] Where CODBLB='PJ_ITM' and IDENT1=[VPOH]ITMREF and IDENT3=IDENT3C
+                 For [F:ZABB]
+                  If !fstat Then
+                          Trbegin [F:ZABB1]
+                             [F:ZABB1]IDENT3     = IDENT3
+                             [F:ZABB1]CODBLB     = "PJ_POH"
+                             [F:ZABB1]IDENT1     = ZPOHNUM
+                             [F:ZABB1]CNTTYP     = [F:ZABB]CNTTYP
+                             [F:ZABB1]NAMBLB     = [F:ZABB]NAMBLB
+                             [F:ZABB1]TYPBLB     = [F:ZABB]TYPBLB
+                             [F:ZABB1]BLOB       = [F:ZABB]BLOB
+                             [F:ZABB1]CREUSR     = GUSER
+                             [F:ZABB1]UPDUSR     = GUSER
+                             [F:ZABB1]CREDATTIM  = date$
+                             [F:ZABB1]UPDDATTIM   = date$
+                          Write[F:ZABB1]
+                          If !fstat Then
+                            Commit
+                          Else
+                            Rollback
+                          Endif
+                   Endif
+                 Next
+
+        Endif
+        Next
+
+                 Filter [F:ZIAOX1]
+                 Filter [F:ZACB1]
+                 Filter [F:ZABB1]
+                 Filter [F:ZABB]
+                 Filter [F:ZACB]
+                 Filter [F:ZAOX1]
+
+         Endif
+         # 6.346.460.ini
+         $NEXT_ADJ
+         Gosub UPD_POH
+         # 6.346.460.fin
+     Next
+Filter [VPOH]
+
+#cerramos tablas
+Close File [VPOH],[F:ZAOX1],[F:ZACB],[F:ZABB], [F:ZABB1],[F:ZACB1],[F:ZIAOX1]
+Return
+
+# 6.346.460.ini
+$UPD_POH
+  Filter [F:ZPOQX]
+  Update [F:ZPOQX] Where [F:ZPOQX]POHNUM= ZPOHNUM and [F:ZPOQX]ITMREF = [VPOH]ITMREF With [F:ZPOQX]ZADJ=2
+Return
+
+$DEL_ADJ
+If !clalev([F:ZAOX1]) : Local File AOBJTXT[F:ZAOX1] Endif
+If !clalev([F:ZABB]) : Local File ABLOB[F:ZABB] : Endif
+If !clalev([F:ZACB]) : Local File ACLOB[F:ZACB] : Endif
+If !clalev([F:ZPOQ2]) Then : Local File PORDERQ [ZPOQ2] : Endif
+Local Integer IJ : Raz IJ
+#borramos todos los documentos adjuntos del pedido
+  For [F:ZPOQ2] Where [F:ZPOQ2]POHNUM=[M:POH0]POHNUM
+    IJ=1
+    IJ=find([F:ZPOQ2]ITMREF,[M:POH2]ITMREF(0..[M:POH2]NBLIG-1))
+    If IJ=0
+
+     #Delete todos los adjuntos del pedido proveedor
+     Trbegin [F:ZAOX1],[F:ZABB],[F:ZACB]
+     For [F:ZAOX1] Where ABREV='POH' and IDENT1=[M:POH0]POHNUM and IDTSTO=[F:ZPOQ2]ITMREF
+      Delete [F:ZABB] Where [F:ZABB]CODBLB='PJ_POH' and [F:ZABB]IDENT1=[M:POH0]POHNUM and [F:ZABB]IDENT3=[F:ZAOX1]IDENT3
+      Delete [F:ZACB] Where [F:ZACB]CODBLB='PJ_POH' and [F:ZACB]IDENT1=[M:POH0]POHNUM and [F:ZACB]IDENT3=[F:ZAOX1]IDENT3
+     Next
+     Delete [F:ZAOX1] Where ABREV='POH' and IDENT1=[M:POH0]POHNUM and IDTSTO=[F:ZPOQ2]ITMREF
+     If fstat =1
+        Rollback
+     Else
+        Commit
+     Endif
+    Endif
+  Next
+Return
+# 6.346.460.fin
+##########################################################################################################################
+#AMG.FIN
+
+##############################################################
+# JC 11112021.ZST01
+$ENVIA_PEDIDO
+Global Char     GCORREO(250),GCOPIA(250),GRUTAPOH(250),GPEDIDO(250)
+Local  Integer  YESNO : YESNO = 2
+
+  Raz GFILPATH
+
+  Call OUINON("Se procederá a enviar correo al proveedor. ¿Continuar?",YESNO) From GESECRAN
+  If YESNO = 2 Then
+    If !clalev([F:ZCNT]) Then : Local File CONTACT [F:ZCNT] : Endif
+    Filter [F:ZCNT] Where BPANUM = [M:POH0]BPSNUM and CNTFNC = 14
+    Read [F:ZCNT] First
+    If !fstat Then
+      GCORREO = [F:ZCNT]WEB
+    Else
+      Call ERREUR("El proveedor no tiene destinatario para envío de correo") From GESECRAN
+      Return
+    Endif
+    Filter [F:ZCNT]
+    Close Local File [ZCNT]
+#    GCORREO="joseluis.chiva@auren.es"
+
+#    GFILPATH="D:\Sage\SAGEX3\folders\PROTO\tmp\prova2.txt.err;D:\Sage\SAGEX3\folders\PROTO\tmp\AUDITL.tra"
+
+    GPEDIDO = [M:POH0]POHNUM
+
+    Local Char LPATHVOL(250),LFOLDER(250),LFILE(250),LEXT(250),LPATHFILE(250),LFILPATH(250)
+    Local Integer I,LCTRL
+
+    If !clalev([F:ZAOX]) Then : Local File AOBJTXT [F:ZAOX] : Endif
+    Filter [F:ZAOX] Where ABREV = 'POH' and IDENT1 = [M:POH0]POHNUM
+    For [F:ZAOX]
+      LPATHVOL  = [F:ZAOX]NAM
+      LFOLDER   = mid$(LPATHVOL,2,instr(1,LPATHVOL,']')-2)
+      For I = len(LPATHVOL) To 0 Step -1
+        If mid$(LPATHVOL,I,1) = '.' Then
+          Break
+        Endif
+      Next
+      LEXT      = right$(LPATHVOL,I+1)
+      LFILE     = mid$(LPATHVOL,instr(1,LPATHVOL,']')+2,len(LPATHVOL)-(instr(1,LPATHVOL,']')+1)-(len(LEXT)+1))
+      LPATHFILE = filpath(LFOLDER,LFILE,LEXT)
+
+      If LCTRL = 0 Then
+        GFILPATH  = LPATHFILE
+        LCTRL     = 1
+      Else
+        GFILPATH += ";"+LPATHFILE
+      Endif
+    Next
+
+    Filter [F:ZAOX]
+    Close Local File [ZAOX]
+
+    Local Char    TBPAR(20)(1..22)
+    Local Char    TBVAL(20)(1..22)
+    Local Char    LFILE(200)
+    Raz TBPAR, TBVAL
+
+    GRUTAPOH=filpath("tmp",[M:POH0]POHNUM,"pdf")
+    If !clalev([F:ZPOH]) Then : Local File PORDER [F:ZPOH] : Endif
+    Read [F:ZPOH]POH0 = [M:POH0]POHNUM
+    If !fstat Then
+      # parámetros del informe de pedido
+      TBPAR(1)  = "commandedeb"         : TBVAL(1)  = [F:ZPOH]POHNUM
+      TBPAR(2)  = "commandefin"         : TBVAL(2)  = [F:ZPOH]POHNUM
+      TBPAR(3)  = "fournisseurdeb"      : TBVAL(3)  = [F:ZPOH]BPSNUM
+      TBPAR(4)  = "fournisseurfin"      : TBVAL(4)  = [F:ZPOH]BPSNUM
+      TBPAR(5)  = "sitedeb"             : TBVAL(5)  = [F:ZPOH]POHFCY
+      TBPAR(6)  = "sitefin"             : TBVAL(6)  = [F:ZPOH]POHFCY
+      TBPAR(7)  = "signedeb"            : TBVAL(7)  = "3"
+      TBPAR(8)  = "signefin"            : TBVAL(8)  = "5"
+      TBPAR(9)  = "datedeb"             : TBVAL(9)  = [F:ZPOH]ORDDAT
+      TBPAR(10) = "datefin"             : TBVAL(10) = [F:ZPOH]ORDDAT
+      TBPAR(11) = "devdeb"              : TBVAL(11) = [F:ZPOH]CUR
+      TBPAR(12) = "devfin"              : TBVAL(12) = [F:ZPOH]CUR
+      TBPAR(13) = "avenantdeb"          : TBVAL(13) = num$([F:ZPOH]REVNUM)
+      TBPAR(14) = "avenantfin"          : TBVAL(14) = num$([F:ZPOH]REVNUM)
+      TBPAR(15) = "comsolddeb"          : TBVAL(15) = num$([F:ZPOH]CLEFLG)
+      TBPAR(16) = "comsoldfin"          : TBVAL(16) = num$([F:ZPOH]CLEFLG)
+      TBPAR(17) = "etatlivdeb"          : TBVAL(17) = num$([F:ZPOH]RCPFLG)
+      TBPAR(18) = "etatlivfin"          : TBVAL(18) = num$([F:ZPOH]RCPFLG)
+      TBPAR(19) = "etatfacdeb"          : TBVAL(19) = num$([F:ZPOH]INVFLG)
+      TBPAR(20) = "etatfacfin"          : TBVAL(20) = num$([F:ZPOH]INVFLG)
+      TBPAR(21) = "codimp"              : TBVAL(21) = num$([F:ZPOH]PRNFLG)
+      TBPAR(22) = "fcycpynam"           : TBVAL(22) = "2"
+      # lanza el informe de pedido
+      Call ETAT("ZPEDCOM","FILE","SPA",0,"",TBPAR,TBVAL) From AIMP3
+    Endif
+    Close Local File [ZPOH]
+
+    If GFILPATH <> "" Then
+      GFILPATH += ";"+GRUTAPOH
+    Else
+      GFILPATH += GRUTAPOH
+    Endif
+
+    If !clalev([F:ZPOQ]) Then : Local File PORDERQ    [F:ZPOQ] : Endif
+    If !clalev([F:ZITM]) Then : Local File ITMMASTER  [F:ZITM] : Endif
+    Filter [F:ZPOQ] Where POHNUM = [M:POH0]POHNUM
+    Read [F:ZPOQ] First
+    If !fstat Then
+      GRUTAPOH=filpath("tmp",[F:ZPOQ]ITMREF,"pdf")
+      Read [F:ZITM]ITM0 = [F:ZPOQ]ITMREF
+      # parámetros del informe de etiqueta
+      TBPAR(1)  = "zpedido"             : TBVAL(1)  = [F:ZPOQ]POHNUM
+      TBPAR(2)  = "zarticulo"           : TBVAL(2)  = [F:ZPOQ]ITMREF
+      TBPAR(3)  = "zunidades"           : TBVAL(3)  = num$(0)
+      TBPAR(4)  = "zetiquetas"          : TBVAL(4)  = num$([F:ZPOQ]ZBULTOS)
+      # lanza el informe de pedido
+      Call ETAT("ZETIMAN","FILE","SPA",0,"",TBPAR,TBVAL) From AIMP3
+    Endif
+    Filter [F:ZPOQ]
+    Close Local File [ZPOQ],[ZITM]
+
+    If GFILPATH <> "" Then
+      GFILPATH += ";"+GRUTAPOH
+    Else
+      GFILPATH += GRUTAPOH
+    Endif
+
+    If !clalev([F:ZAUS]) Then : Local File AUTILIS [F:ZAUS] : Endif
+    Read [F:ZAUS]CODUSR = "JOSEP"
+    If !fstat Then
+      If [F:ZAUS]ADDEML <> "" Then
+        GCORREO += ";"+[F:ZAUS]ADDEML
+      Endif
+    Endif
+    Read [F:ZAUS]CODUSR = "CLARA"
+    If !fstat Then
+      If [F:ZAUS]ADDEML <> "" Then
+        GCORREO += ";"+[F:ZAUS]ADDEML
+      Endif
+    Endif
+    Close Local File [ZAUS]
+
+    Sleep 5
+
+    Call WORKFLOW (1,"ZPO","",GUSER) From AWRK
+
+    If dim(GPEDIDO)       > 0 Then : Kill GPEDIDO       : Endif
+    If dim(GCORREO)       > 0 Then : Kill GCORREO       : Endif
+    If dim(GRUTAPOH)      > 0 Then : Kill GRUTAPOH      : Endif
+  Endif
+
+Return
+
+##############################################################
+#################    ACCIONES DE CAMPO    ####################
+##############################################################
+##############################################
+### Después de modificar código proveedor
+##############################################
+Subprog AM_BPSNUM(VALEUR)
+Variable Char    VALEUR()
+Local Char ZSECUENPROVEEDOR(2),ZCULTIMO(5), ZCULTIMO2(5),ZMU(2)
+Local Integer ZANN, ZULTIMO, ZULTIMO2
+
+#PPYYSSSSS
+
+ZSECUENPROVEEDOR = [F:BPS]ZSECUEN
+ZANN = year([M:POH0]ORDDAT)-2000 # OjO al dato
+ZULTIMO = 0
+ZMUE = ([M:POH0]ZMUE)
+ZULTIMO2 = 0
+ZMU = 'MU'										 	 	  # añadido LPM
+
+#Infbox(ZSECUENPROVEEDOR+num$(ZANN))
+If ZMUE = 1 													  #añadido LPM
+ If ZSECUENPROVEEDOR <> '' # Para los 'AD','AT','FE','GO',..
+  If !clalev([ZPOH]) : Local File PORDER [ZPOH] : Endif
+  Filter [F:ZPOH] Where left$(POHNUM,4) = ZSECUENPROVEEDOR+num$(ZANN)
+  Read [F:ZPOH] Last # coge el ultimo pedido
+  If fstat = 0   # exito (encontrado)
+    ZULTIMO = val(right$([F:ZPOH]POHNUM,5))
+    ZULTIMO = ZULTIMO +1  # añade 1 al último
+    ZCULTIMO = string$((5-len(num$(ZULTIMO))), '0')+num$(ZULTIMO)
+    [M:POH0]POHNUM = ZSECUENPROVEEDOR+num$(ZANN)+ZCULTIMO
+    Affzo[M:POH0]POHNUM
+  Else
+  # Primer pedido para ese proveedor
+  [M:POH0]POHNUM = ZSECUENPROVEEDOR+num$(ZANN)+'00001'
+  Affzo[M:POH0]POHNUM
+
+  Endif
+
+ Endif
+ # Auren 05.913.683 Contador muestras
+
+Else
+If !clalev([ZPOH]) : Local File PORDER [ZPOH] : Endif
+Filter [F:ZPOH] Where left$(POHNUM,4) = ZMU+num$(ZANN)
+Read [F:ZPOH] Last
+ If fstat = 0
+ ZULTIMO2  = val(right$([F:ZPOH]POHNUM,5))
+ ZULTIMO2 = ZULTIMO2+1
+ ZCULTIMO2 = string$((5-len(num$(ZULTIMO2))), '0')+num$(ZULTIMO2)
+ [M:POH0]POHNUM = ZMU+num$(ZANN)+ZCULTIMO2
+ Affzo[M:POH0]POHNUM
+ Else
+ [M:POH0]POHNUM = ZMU+ num$(ZANN)+'00001'
+ Affzo[M:POH0]POHNUM
+ Endif
+# Auren 05.913.683 Contador muestras
+Endif
+
+Enable GSTACRE
+
+End
+
+######################################################################################
+## Etiqueta añadida por el supervisor (pantalla POH0) 08/01/2018 13:44:48 (ADMIN)
+######################################################################################
+Subprog IB_POHNUM
+End
+
+##############################################
+## Despues de campo
+##############################################
+#Subprog AP_BPSNUM(VALEUR)
+#Variable Char    VALEUR()
+#End
+
+######################################################################################
+## Después de modificar número pedido
+######################################################################################
+Subprog AM_POHNUM(VALEUR)
+Variable Char    VALEUR()
+
+Disable GSTACRE  # Deshabilita el botón crear
+
+#Infbox([M:POH0]POHNUM-[M:POH0]BPSNUM)
+End
+
+######################################################################################
+## Después de modificar fecha pedido
+######################################################################################
+Subprog AM_ORDDAT(VALEUR)
+Variable Date    VALEUR
+
+#Infbox([M:POH0]POHNUM-[M:POH0]BPSNUM)
+End
+
+##############################################
+Subprog AV_ORDDAT(VALEUR)
+Variable Date    VALEUR
+   Disable GSTACRE
+
+#Infbox([M:POH0]POHNUM-[M:POH0]BPSNUM)
+End
+
+##############################################################
+##################    FUNCIONES PROPIAS    ###################
+##############################################################

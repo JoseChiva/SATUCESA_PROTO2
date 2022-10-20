@@ -1,0 +1,24 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+$ACTION
+#If GUSER="ADMIN" Then : Infbox ACTION : Endif
+  Case ACTION
+    When "FICHIER"  : Gosub FICHIER
+    When Default
+  Endcase
+Return
+
+##############################################################
+######################    ACCIONES    ########################
+##############################################################
+##############################################################
+$FICHIER
+  If dim(GRUTAPOH) > 0 Then
+    FICHIER = GRUTAPOH
+  Endif
+Return
+
+##############################################################
+Subprog IMPRIME(NBPAR2,PARAMETRE2)
+Value    Integer NBPAR2
+Variable Char    PARAMETRE2()()
+End
