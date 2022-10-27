@@ -1,5 +1,7 @@
 #<AdxTL>@(#)0.0.0.0 $Revision$ Pedidos
 # Gestión de la máscara SOH4 (Especifico)
+# 06.403.676 - JC.27102022.Personalización de la pantalla de clientes
+######################################################################################
 
 ######################################################################################
 ## Etiqueta añadida por el supervisor (pantalla SOH4) 19/02/2018 11:41:26 (ADMIN)
@@ -123,7 +125,7 @@ Subprog AM_BPAADD(VALEUR)
 Variable Char    VALEUR()
 
    If [M:SOH4]NBLIG<>0
-   For I=0 TO [M:SOH4]NBLIG-1
+   For I=0 To [M:SOH4]NBLIG-1
       [M:SOH4]DBPAADD(I) = VALEUR
       Affzo [M:SOH4]DBPAADD(I)
    Next I
@@ -134,20 +136,98 @@ End
 ######################################################################################
 
 
+######################################################################################
+## Antes de entrada al campo 'Representante1' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AS_ZREP1(VALEUR)
+Variable Char    VALEUR()
+  If !clalev([F:ZBPD]) Then : Local File BPDLVCUST [F:ZBPD] : Endif
+  Read [F:ZBPD]BPD0 = [M:SOH0]BPCORD;[M:SOH1]BPAADD
+  If !fstat Then
+    VALEUR = [F:ZBPD]REP(0)
+  Endif
+  Close Local File [ZBPD]
+End
 
+######################################################################################
+## Después de modificar el campo 'Representante1' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AM_ZREP1(VALEUR)
+Variable Char    VALEUR()
+  [M:SOH4]REP1(nolign-1) = VALEUR
+  Affzo [M:SOH4]REP1(nolign-1)
+End
 
+######################################################################################
+## Antes de entrada al campo 'Com.Rep1' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AS_ZCOMREP1(VALEUR)
+Variable Decimal VALEUR
+  If !clalev([F:ZBPD]) Then : Local File BPDLVCUST [F:ZBPD] : Endif
+  Read [F:ZBPD]BPD0 = [M:SOH0]BPCORD;[M:SOH1]BPAADD
+  If !fstat Then
+    VALEUR = [F:ZBPD]ZCOMREP1
+  Endif
+  Close Local File [ZBPD]
+End
 
+######################################################################################
+## Después de modificar el campo 'Com.Rep2' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AM_ZCOMREP1(VALEUR)
+Variable Decimal VALEUR
+  [M:SOH4]REPRAT1(nolign-1) = VALEUR
+  Affzo [M:SOH4]REPRAT1(nolign-1)
+End
 
+######################################################################################
+## Antes de entrada al campo 'Representante2' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AS_ZREP2(VALEUR)
+Variable Char    VALEUR()
+  If !clalev([F:ZBPD]) Then : Local File BPDLVCUST [F:ZBPD] : Endif
+  Read [F:ZBPD]BPD0 = [M:SOH0]BPCORD;[M:SOH1]BPAADD
+  If !fstat Then
+    VALEUR = [F:ZBPD]REP(1)
+  Endif
+  Close Local File [ZBPD]
+End
 
+######################################################################################
+## Después de modificar el campo 'Representante2' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AM_ZREP2(VALEUR)
+Variable Char    VALEUR()
+  [M:SOH4]REP2(nolign-1) = VALEUR
+  Affzo [M:SOH4]REP2(nolign-1)
+End
 
+######################################################################################
+## Antes de entrada al campo 'Com.Rep2' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AS_ZCOMREP2(VALEUR)
+Variable Decimal VALEUR
+  If !clalev([F:ZBPD]) Then : Local File BPDLVCUST [F:ZBPD] : Endif
+  Read [F:ZBPD]BPD0 = [M:SOH0]BPCORD;[M:SOH1]BPAADD
+  If !fstat Then
+    VALEUR = [F:ZBPD]ZCOMREP2
+  Endif
+  Close Local File [ZBPD]
+End
 
-
-
-
-
-
-
-
-
-
-
+######################################################################################
+## Después de modificar el campo 'Com.Rep2' (pantalla SOH4) 27/10/2022 11:17:55 (ADMIN)
+######################################################################################
+# 06.403.676
+Subprog AM_ZCOMREP2(VALEUR)
+Variable Decimal VALEUR
+  [M:SOH4]REPRAT2(nolign-1) = VALEUR
+  Affzo [M:SOH4]REPRAT2(nolign-1)
+End
