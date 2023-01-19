@@ -1,11 +1,8 @@
 #<AdxTL>@(#)0.0.0.0 $Revision$ Pedidos
 # Gestión de la máscara SOH4 (Especifico)
-# 06.403.676 - JC.27102022.Personalización de la pantalla de clientes
+# 06.431.011 - JC.18012023.Información ley plástico facs. venta
 ######################################################################################
 
-######################################################################################
-## Etiqueta añadida por el supervisor (pantalla SOH4) 19/02/2018 11:41:26 (ADMIN)
-######################################################################################
 $ACTION
 Case ACTION
   When "SETBOUT" : Gosub SETBOUT
@@ -15,6 +12,9 @@ Endcase
 Return
 
 
+##############################################################
+######################    ACCIONES    ########################
+##############################################################
 ##############Desactivar botones#########################################
 $SETBOUT
 
@@ -34,6 +34,13 @@ $FIN_PICK
 
 Return
 
+##############################################################
+######################    ETIQUETAS    #######################
+##############################################################
+
+##############################################################
+#################    ACCIONES DE CAMPO    ####################
+##############################################################
 Subprog AM_ITMREF(VALEUR)
 Variable Char    VALEUR()
 
@@ -43,6 +50,28 @@ Variable Char    VALEUR()
     [M:SOH4]ZCODALTERNA(nolign-1) = [F:ZITM]ZCODALTERNA
     Affzo [M:SOH4]ZCODALTERNA(nolign-1)
   Endif
+
+# 06.431.011.ini
+  If VALEUR <> '' Then
+    Local Char LRET(100)
+    If !clalev([F:ZIT0]) Then : Local File ZITMMASTER [F:ZIT0] : Endif
+    If !clalev([F:ITM0]) Then : Local File ITMMASTER  [F:ITM0] : Endif
+    Read [F:ZIT0]ZITM0  = VALEUR
+    Read [F:ITM0]ITM0   = VALEUR
+    If !fstat Then
+      Call PARAM("","ZPLASTICTX",LRET) From ADOVAL
+      [M:SOH4]ZPLTXFLG(nolign-1) = [F:ZIT0]ZPLTXFLG
+      [M:SOH4]ZPLTXWEI(nolign-1) = [F:ITM0]ITMWEI
+      [M:SOH4]ZPLTXPOR(nolign-1) = [F:ZIT0]ZPLTXPOR
+      [M:SOH4]ZPLTXTAX(nolign-1) = val(LRET)
+      Affzo [M:SOH4]ZPLTXFLG(nolign-1)
+      Affzo [M:SOH4]ZPLTXWEI(nolign-1)
+      Affzo [M:SOH4]ZPLTXPOR(nolign-1)
+      Affzo [M:SOH4]ZPLTXTAX(nolign-1)
+    Endif
+    Close Local File [ZIT0],[ITM0]
+  Endif
+# 06.431.011.fin
 
 End
 
@@ -66,7 +95,6 @@ Variable Char    VALEUR()
 #    [M:SOH4]ZBULTOS(nolign-1) = BULTOS
 #    Affzo [M:SOH4]ZBULTOS(nolign-1)
 #  Endif
-
 End
 
 Subprog AM_QTY(VALEUR)
@@ -231,3 +259,46 @@ Variable Decimal VALEUR
   [M:SOH4]REPRAT2(nolign-1) = VALEUR
   Affzo [M:SOH4]REPRAT2(nolign-1)
 End
+
+######################################################################################
+## Antes de entrada al campo 'Plastic tax' (pantalla SOH4) 19/01/2023 11:55:38 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXFLG(VALEUR)
+Variable Integer VALEUR
+  If [M:SOH4]SOQSTA(nolign-1) = 3 Then
+    Diszo [M:SOH4]ZPLTXFLG(nolign-1)
+  Else
+    Actzo [M:SOH4]ZPLTXFLG(nolign-1)
+  Endif
+End
+
+######################################################################################
+## Antes de entrada al campo 'KG/UN' (pantalla SOH4) 19/01/2023 11:55:38 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXWEI(VALEUR)
+Variable Decimal VALEUR
+  If [M:SOH4]SOQSTA(nolign-1) = 3 Then
+    Diszo [M:SOH4]ZPLTXWEI(nolign-1)
+  Else
+    Actzo [M:SOH4]ZPLTXWEI(nolign-1)
+  Endif
+End
+
+######################################################################################
+## Antes de entrada al campo '% plastic tax' (pantalla SOH4) 19/01/2023 11:55:38 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXPOR(VALEUR)
+Variable Decimal VALEUR
+  If [M:SOH4]SOQSTA(nolign-1) = 3 Then
+    Diszo [M:SOH4]ZPLTXPOR(nolign-1)
+  Else
+    Actzo [M:SOH4]ZPLTXPOR(nolign-1)
+  Endif
+End
+
+##############################################################
+##################    FUNCIONES PROPIAS    ###################
+##############################################################

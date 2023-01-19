@@ -1,0 +1,94 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+# Gestión de la máscara SIH4 (Especifico)
+# 06.431.011 - JC.18012023.Información ley plástico facs. venta
+######################################################################################
+
+$ACTION
+
+#If GUSER="ADMIN" Then : Infbox ACTION : Endif
+Case ACTION
+  When Default
+Endcase
+
+Return
+
+##############################################################
+######################    ACCIONES    ########################
+##############################################################
+
+##############################################################
+######################    ETIQUETAS    #######################
+##############################################################
+
+##############################################################
+#################    ACCIONES DE CAMPO    ####################
+##############################################################
+Subprog AM_ITMREF(VALEUR)
+Variable Char    VALEUR()
+
+# 06.431.011.ini
+  If VALEUR <> '' Then
+    Local Char LRET(100)
+    If !clalev([F:ZIT0]) Then : Local File ZITMMASTER [F:ZIT0] : Endif
+    If !clalev([F:ITM0]) Then : Local File ITMMASTER  [F:ITM0] : Endif
+    Read [F:ZIT0]ZITM0  = VALEUR
+    Read [F:ITM0]ITM0   = VALEUR
+    If !fstat Then
+      Call PARAM("","ZPLASTICTX",LRET) From ADOVAL
+      [M:SIH4]ZPLTXFLG(nolign-1) = [F:ZIT0]ZPLTXFLG
+      [M:SIH4]ZPLTXWEI(nolign-1) = [F:ITM0]ITMWEI
+      [M:SIH4]ZPLTXPOR(nolign-1) = [F:ZIT0]ZPLTXPOR
+      [M:SIH4]ZPLTXTAX(nolign-1) = val(LRET)
+      Affzo [M:SIH4]ZPLTXFLG(nolign-1)
+      Affzo [M:SIH4]ZPLTXWEI(nolign-1)
+      Affzo [M:SIH4]ZPLTXPOR(nolign-1)
+      Affzo [M:SIH4]ZPLTXTAX(nolign-1)
+    Endif
+    Close Local File [ZIT0],[ITM0]
+  Endif
+# 06.431.011.fin
+
+End
+
+######################################################################################
+## Antes de entrada al campo 'Plastic tax' (pantalla SDH1) 19/01/2023 12:12:02 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXFLG(VALEUR)
+Variable Integer VALEUR
+  If [M:SIH1]INVSTA = 3 Then
+    Diszo [M:SIH4]ZPLTXFLG(nolign-1)
+  Else
+    Actzo [M:SIH4]ZPLTXFLG(nolign-1)
+  Endif
+End
+
+######################################################################################
+## Antes de entrada al campo 'KG/UN' (pantalla SDH1) 19/01/2023 12:12:02 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXWEI(VALEUR)
+Variable Decimal VALEUR
+  If [M:SIH1]INVSTA = 3 Then
+    Diszo [M:SIH4]ZPLTXWEI(nolign-1)
+  Else
+    Actzo [M:SIH4]ZPLTXWEI(nolign-1)
+  Endif
+End
+
+######################################################################################
+## Antes de entrada al campo '% plastic tax' (pantalla SDH1) 19/01/2023 12:12:02 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AS_ZPLTXPOR(VALEUR)
+Variable Decimal VALEUR
+  If [M:SIH1]INVSTA = 3 Then
+    Diszo [M:SIH4]ZPLTXPOR(nolign-1)
+  Else
+    Actzo [M:SIH4]ZPLTXPOR(nolign-1)
+  Endif
+End
+
+##############################################################
+##################    FUNCIONES PROPIAS    ###################
+##############################################################

@@ -1,23 +1,27 @@
 #<AdxTL>@(#)0.0.0.0 $Revision$
 # 06.300.581 - AM.19012022.OTRO ARTICULO EN BLANCO
+# 06.431.011 - JC.18012023.Información ley plástico facs. venta
+###############################################################################
+
 #SPEITM
 # Gestión de las máscaras ZITM1, ZITM2, ZITM3, ZITM4 (Especifico)
 
-######################################################################################
-## Etiqueta añadida por el supervisor (pantalla ZITM1) 04/12/2017 17:25:25 (ADMIN)
-######################################################################################
 $ACTION
+#Infbox ACTION
   Case ACTION
-    When "OUVRE" : Gosub OUVRE
-    When "APRES_CRE" : Gosub APRES_CRE
-    When "APRES_MOD" : Gosub APRES_MOD
-    When "ANNULE" : Gosub ANNULE
-    When "LIENS" : Gosub LIENS
-    When "AV_VERF_ANU" : Gosub AV_VERF_ANU
+    When "OUVRE"          : Gosub OUVRE
+    When "APRES_CRE"      : Gosub APRES_CRE
+    When "APRES_MOD"      : Gosub APRES_MOD
+    When "ANNULE"         : Gosub ANNULE
+    When "LIENS"          : Gosub LIENS
+    When "AV_VERF_ANU"    : Gosub AV_VERF_ANU
     When Default
   Endcase
 Return
 
+##############################################################
+######################    ACCIONES    ########################
+##############################################################
 ##############Abrir Pantalla#########################################
 $OUVRE
   If !clalev([F:ZITM]) Then
@@ -55,6 +59,21 @@ Close Local File [ITM0]
 #  Endif
 # 06.300.581.fin
 
+# 06.431.011.ini
+  If !clalev([F:ZIT0]) Then : Local File ZITMMASTER [F:ZIT0] : Endif
+  Read [F:ZIT0]ZITM0 = [M:ITM0]ITMREF
+  If !fstat Then
+    [F:ZIT0]ZPLTXFLG = [M:ZITM1]ZPLTXFLG
+    [F:ZIT0]ZPLTXPOR = [M:ZITM1]ZPLTXPOR
+    Rewrite [F:ZIT0]
+    If !fstat Then
+      Commit
+    Else
+      Rollback
+    Endif
+  Endif
+  Close Local File [ZIT0]
+# 06.431.011.ini
 
 Return
 #############Después de Modificar###################
@@ -92,6 +111,23 @@ $APRES_MOD
   Close Local File [ITM0]
 # 06.300.581.fin
 
+# 06.431.011.ini
+  If !clalev([F:ZIT0]) Then : Local File ZITMMASTER [F:ZIT0] : Endif
+  Read [F:ZIT0]ZITM0 = [M:ITM0]ITMREF
+  If !fstat Then
+    [F:ZIT0]ZPLTXFLG = [M:ZITM1]ZPLTXFLG
+    [F:ZIT0]ZPLTXPOR = [M:ZITM1]ZPLTXPOR
+    Trbegin [F:ZIT0]
+    Rewrite [F:ZIT0]
+    If !fstat Then
+      Commit
+    Else
+      Rollback
+    Endif
+  Endif
+  Close Local File [ZIT0]
+# 06.431.011.ini
+
 Return
 ##########Carga de Pantalla y al cambiar de registro##########
 $LIENS
@@ -101,6 +137,18 @@ $LIENS
   Next
   Affzo [M:ZITM1]
 
+# 06.431.011.ini
+  [M:ZITM1]ZPLTXFLG = [F:ZITM]ZPLTXFLG
+  [M:ZITM1]ZPLTXPOR = [F:ZITM]ZPLTXPOR
+  Affzo [M:ZITM1]ZPLTXFLG
+  Affzo [M:ZITM1]ZPLTXPOR
+  If [M:ZITM1]ZPLTXFLG = 1 Then
+    Raz   [M:ZITM1]ZPLTXPOR
+    Diszo [M:ZITM1]ZPLTXPOR
+  Else
+    Actzo [M:ZITM1]ZPLTXPOR
+  Endif
+# 06.431.011.fin
 Return
 
 ##########Antes de comenzar el borrado estándar##########
@@ -114,6 +162,9 @@ $ANNULE
 Return
 
 
+##############################################################
+######################    ETIQUETAS    #######################
+##############################################################
 ###########CARGATABLA#####################################
 $CARGATABLA
 
@@ -473,3 +524,27 @@ $CARGAMASCARA
   [M:ZITM5]ZOBSNOT = [F:ZITM]ZOBSNOT
 
 Return
+
+##############################################################
+#################    ACCIONES DE CAMPO    ####################
+##############################################################
+######################################################################################
+## Después de modificar el campo 'Plastic tax' (pantalla ZITM1) 18/01/2023 13:39:54 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AM_ZPLTXFLG(VALEUR)
+Variable Integer VALEUR
+  If VALEUR = 1 Then
+    [M:ZITM1]ZPLTXFLG = 1
+    Raz   [M:ZITM1]ZPLTXPOR
+    Diszo [M:ZITM1]ZPLTXPOR
+  Else
+    [M:ZITM1]ZPLTXFLG = 2
+    Actzo [M:ZITM1]ZPLTXPOR
+  Endif
+  Affzo [M:ZITM1]ZPLTXFLG
+End
+
+##############################################################
+##################    FUNCIONES PROPIAS    ###################
+##############################################################
