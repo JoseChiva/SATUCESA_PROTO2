@@ -142,7 +142,7 @@ $LIENS
   [M:ZITM1]ZPLTXPOR = [F:ZITM]ZPLTXPOR
   Affzo [M:ZITM1]ZPLTXFLG
   Affzo [M:ZITM1]ZPLTXPOR
-  If [M:ZITM1]ZPLTXFLG = 1 Then
+  If [M:ZITM1]ZPLTXFLG <> 2 Then
     Raz   [M:ZITM1]ZPLTXPOR
     Diszo [M:ZITM1]ZPLTXPOR
   Else
@@ -537,12 +537,25 @@ Variable Integer VALEUR
   If VALEUR = 1 Then
     [M:ZITM1]ZPLTXFLG = 1
     Raz   [M:ZITM1]ZPLTXPOR
+    Affzo [M:ZITM1]ZPLTXPOR
     Diszo [M:ZITM1]ZPLTXPOR
   Else
     [M:ZITM1]ZPLTXFLG = 2
     Actzo [M:ZITM1]ZPLTXPOR
   Endif
   Affzo [M:ZITM1]ZPLTXFLG
+End
+
+######################################################################################
+## Después de modificar el campo '% plastic tax' (pantalla ZITM1) 20/01/2023 09:43:20 (ADMIN)
+######################################################################################
+# 06.431.011
+Subprog AM_ZPLTXPOR(VALEUR)
+Variable Decimal VALEUR
+  If VALEUR < 0 or VALEUR > 100 Then
+    Call ERREUR("Valor imposible (Rango 0-100)") From GESECRAN
+    mkstat=2
+  Endif
 End
 
 ##############################################################
