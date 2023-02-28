@@ -1,0 +1,170 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$
+#LECTURE -> añadir valor a campo en pantalla
+# 06.444.523 AMG.16022023 INCLUIR CAMPOS EN CONSULTAS LINIAS FACTURAS VENTA
+###############################################################################################
+
+$ACTION
+Case ACTION
+  When "LECTURE"    : Gosub LECTURE
+  When Default
+Endcase
+Return
+
+############################################################
+$LECTURE
+Local   Decimal  WMNTORG(0..5), WMNTDES(0..5), WRAT
+Local   Integer  SPSTAT, WI
+
+#105200 RICAR 2015/05/25 - Inv Cancelation - BEGIN
+Call SHOWHIDE([M:CST1]CPY) From CNSCSTSTD
+#105200 RICAR 2015/05/25 - Inv Cancelation - END
+
+#MAE, est ce qu'on vient de article ou article site ?
+If GPILNAV>1
+    If find(GNAVIG(GPILNAV-1),"GESITM")
+        Diszo [M:CST1]ITMREF
+    Elsif find(GNAVIG(GPILNAV-1),"GESITF")
+        Diszo [M:CST1]ITMREF
+        Diszo [M:CST1]SALFCY
+        Diszo [M:CST1]CPY
+    Endif
+
+    #acces depuis clients ou fournisseurs
+    If find(GNAVIG(GPILNAV-1),"GESBPS","GESBPC")
+        Diszo [M:CST1]BPCINV
+    Endif
+
+    # GRNA 16/05/2011
+    Local Char CUSSEAORI : CUSSEAORI = "CST1"
+    Gosub LECTURE From CUSSEALIB
+Endif
+
+Gosub CHANGE_MSK From GCONSULT
+If CHGPAG<0 : NOL = MAXLIG : Endif
+
+#-- Positionnement des Filtres
+Gosub LOAD_FILTER From CNSCSTSTD
+If PROGSPE<>""
+  ACTION = "FILTRE" : Gosub ACTION From =PROGSPE
+Endif
+
+Link [SID] With [SIH]SIH0=[SID]NUM,
+&               [SIV]SIV0=[SID]NUM
+&          As [LNK]
+
+
+# ------------------------------------------------------- #
+# CHGPAG = 1    :    Recherche                            #
+# ------ = 2    :    Suite                                #
+#        = 3    :    F5 (Rafraichissement page courante)  #
+# CHGPAG = -1   :    Dernier                              #
+# ------ = -2   :    Retour (Page précédente)             #
+# ------------------------------------------------------- #
+
+#-- Application des Filtres
+If CHGPAG > 0
+    SUITE=1
+    If    CHGPAG = 1 : RETOUR = 1 : Elsif CHGPAG = 2 : RETOUR = 2 : Endif
+    Case [M:CCST]TRI
+      When 1 : # tri par numéro
+        Filter [LNK] Where evalue(WFIL) & evalue(WFIL1) & evalue(WFIL2) Order By Key SID0
+      When 2 : # tri par date
+        Filter [LNK] Where evalue(WFIL) & evalue(WFIL1) & evalue(WFIL2)
+&                    Order By Key CLE=[F:SIH]BPRDAT;[F:SIH]NUM;[F:SID]SIDLIN :# 69747
+#&                    Order By Key CLE=[F:SIH]BPRDAT;[F:SIH]NUM
+    Endcase
+Else
+    RETOUR=1
+    If    CHGPAG = -1 : SUITE = 1 : Else  SUITE = 2 : Endif
+    Case [M:CCST]TRI
+      When 1 : # tri par numéro
+        Filter [LNK] Where evalue(WFIL) & evalue(WFIL1) & evalue(WFIL2) Order By Key SID0 Desc
+      When 2 : # tri par date
+        Filter [LNK] Where evalue(WFIL) & evalue(WFIL1) & evalue(WFIL2)
+&                    Order By [F:SIH]BPRDAT Desc ;[F:SIH]NUM Desc;[F:SID]SIDLIN Desc :# 69747
+#&                    Order By [F:SIH]BPRDAT Desc ;[F:SIH]NUM Desc
+    Endcase
+Endif
+#-- raz du masque
+If CHGPAG<>2 & CHGPAG<>-2 : Raz [M:CST2] : Endif
+
+#-- lecture
+$BOUCLE
+For [LNK] With Nohint
+
+# FGR 24/02/2015 : X3SUIVI104383 : mis dans le FILTER
+#If fstat & [F:SIH]ORIMOD=5 Goto SUIV : Endif
+## Filtre sur la société
+#  If [M:CST1]CPY <> "" & ([M:CST1]CPY <> [F:SIH]CPY) Goto SUIV : Endif
+
+  If NBLU = 1
+     If CHGPAG=2 | CHGPAG=-2 : Raz [M:CST2] : Endif
+     NBLU = 2
+  Endif
+  If CHGPAG > 0
+     If NOL >= MAXLIG-1 : SUITE=2 : Break : Endif
+     NOL    += 1
+     If NOL=0
+         #69747
+         If CHGPAG=2
+           If [F:SID]NUM=FINNUM and [F:SID]SIDLIN<=FINLIN : NOL-=1 : Goto SUIV : Endif
+         Endif
+         #fin 69747
+         DEBNUM = [F:SIH]NUM
+         DEBDAT = [F:SIH]BPRDAT
+         DEBLIN = [F:SID]SIDLIN :# 69747
+     Endif
+     FINNUM = [F:SIH]NUM
+     FINDAT = [F:SIH]BPRDAT
+     FINLIN = [F:SID]SIDLIN :# 69747
+  Else
+     If NOL <= 0 : RETOUR=2 : Break : Endif
+     NOL    -= 1
+     If NOL=MAXLIG-1
+         #69747
+         If CHGPAG=-2
+           If [F:SID]NUM=DEBNUM and [F:SID]SIDLIN>=DEBLIN : NOL+=1 : Goto SUIV : Endif
+         Endif
+         #fin 69747
+         FINNUM = [F:SIH]NUM
+         FINDAT = [F:SIH]BPRDAT
+         FINLIN = [F:SID]SIDLIN :# 69747
+     Endif
+     DEBNUM = [F:SIH]NUM
+     DEBDAT = [F:SIH]BPRDAT
+     DEBLIN = [F:SID]SIDLIN :# 69747
+  Endif
+
+  nolign = NOL+1
+  [M:CST2]=[F:SIH] : # trans classe sur SINVOICE
+  # 71065 : PJT
+  #[M:CST2]=[F:SID] : # trans classe sur SINVOICED
+  [M:CST2]=[F:SIV] : # trans classe sur SINVOICEV
+  [M:CST2]=[F:SID] : # trans classe sur SINVOICED
+  # 71065 : PJT
+
+# 06.325.600.INI
+If clalev([F:ZITM])= 0  : Local File ZITMMASTER [ZITM] : Endif
+Raz [F:ZITM]
+Read [ZITM]ZITM0=[M:CST2]ITMREF(nolign-1)
+[M:CST2]ZMODEL(nolign-1)=[ZITM]ZMODEL
+# 06.325.600.FIN
+
+  #105200 RICAR 2015/05/25 - Inv Cancelation - BEGIN
+  Raz [L]V_LEG
+  Call GETLEG([M:CCST]CPY,"",[L]V_LEG) From TRTLECLEG
+
+  If [L]INVCA_ON = 1 & func AFNC.PARAM("INVCAN",[L]V_LEG) = "2"
+    Case [F:SIH]REVCANSTA
+      When 0: [M:CST2]INVCAN(nolign-1) = 3
+      When 1: [M:CST2]INVCAN(nolign-1) = 1
+      When 2: [M:CST2]INVCAN(nolign-1) = 2
+    Endcase
+  Endif
+  #105200 RICAR 2015/05/25 - Inv Cancelation - END
+
+  $SUIV
+Next
+Filter [LNK]
+GPE=1
+Return
