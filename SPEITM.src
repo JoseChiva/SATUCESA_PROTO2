@@ -65,6 +65,7 @@ Close Local File [ITM0]
   If !fstat Then
     [F:ZIT0]ZPLTXFLG = [M:ZITM1]ZPLTXFLG
     [F:ZIT0]ZPLTXPOR = [M:ZITM1]ZPLTXPOR
+    Trbegin [F:ZIT0]
     Rewrite [F:ZIT0]
     If !fstat Then
       Commit
