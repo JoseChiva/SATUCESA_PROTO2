@@ -1,6 +1,7 @@
 #<AdxTL>@(#)0.0.0.0 $Revision$
 #LECTURE -> añadir valor a campo en pantalla
 # 06.444.523 AMG.16022023 INCLUIR CAMPOS EN CONSULTAS LINIAS FACTURAS VENTA
+# 06.446.901 - JC.28022023.Añadir campos de cliente entrega en consulta líneas facturas
 ###############################################################################################
 
 $ACTION
@@ -149,6 +150,45 @@ Raz [F:ZITM]
 Read [ZITM]ZITM0=[M:CST2]ITMREF(nolign-1)
 [M:CST2]ZMODEL(nolign-1)=[ZITM]ZMODEL
 # 06.325.600.FIN
+
+# 06.446.901.ini
+If !clalev([F:ZBPD]) Then : Local File BPDLVCUST  [F:ZBPD] : Endif
+If !clalev([F:ZAX0]) Then : Local File ATEXTRA    [F:ZAX0] : Endif
+If !clalev([F:ZAX1]) Then : Local File ATEXTRA    [F:ZAX1] : Endif
+If !clalev([F:ZAX2]) Then : Local File ATEXTRA    [F:ZAX2] : Endif
+If !clalev([F:ZAX3]) Then : Local File ATEXTRA    [F:ZAX3] : Endif
+If !clalev([F:ZAX4]) Then : Local File ATEXTRA    [F:ZAX4] : Endif
+Read [F:ZBPD]BPD0 = [M:CST2]BPCINV(nolign-1);[M:CST2]BPAADD(nolign-1)
+If !fstat Then
+  Raz [M:CST2]ZZONA(nolign-1),[M:CST2]ZTIERS1(nolign-1),[M:CST2]ZBUS(nolign-1),[M:CST2]ZGROUPE(nolign-1),[M:CST2]ZORIPPT(nolign-1)
+  # zona
+  Read [F:ZAX0]AXX0 = 'ATABDIV';'LNGDES';GLANGUE;'6001';[F:ZBPD]ZZONA
+  If !fstat Then
+    [M:CST2]ZZONA(nolign-1)     = [F:ZAX0]TEXTE
+  Endif
+  # tiers1
+  Read [F:ZAX1]AXX0 = 'ATABDIV';'LNGDES';GLANGUE;'6002';[F:ZBPD]ZTIERS1
+  If !fstat Then
+    [M:CST2]ZTIERS1(nolign-1)   = [F:ZAX1]TEXTE
+  Endif
+  # actividad
+  Read [F:ZAX2]AXX0 = 'ATABDIV';'LNGDES';GLANGUE;'425';[F:ZBPD]ZBUS
+  If !fstat Then
+    [M:CST2]ZBUS(nolign-1)      = [F:ZAX2]TEXTE
+  Endif
+  # groupe
+  Read [F:ZAX3]AXX0 = 'ATABDIV';'LNGDES';GLANGUE;'6003';[F:ZBPD]ZGROUPE
+  If !fstat Then
+    [M:CST2]ZGROUPE(nolign-1)   = [F:ZAX3]TEXTE
+  Endif
+  # origen
+  Read [F:ZAX4]AXX0 = 'ATABDIV';'LNGDES';GLANGUE;'413';[F:ZBPD]ZORIPPT
+  If !fstat Then
+    [M:CST2]ZORIPPT(nolign-1)   = [F:ZAX4]TEXTE
+  Endif
+Endif
+Close Local File [ZBPD],[ZAX0],[ZAX1],[ZAX2],[ZAX3],[ZAX4]
+# 06.446.901.fin
 
   #105200 RICAR 2015/05/25 - Inv Cancelation - BEGIN
   Raz [L]V_LEG
