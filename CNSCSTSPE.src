@@ -188,6 +188,17 @@ If !fstat Then
   Endif
 Endif
 Close Local File [ZBPD],[ZAX0],[ZAX1],[ZAX2],[ZAX3],[ZAX4]
+
+If !clalev([F:ZREP]) Then : Local File SALESREP [F:ZREP] : Endif
+Read [F:ZREP]REP0 = [M:CST2]REP1(nolign-1)
+If !fstat Then
+  [M:CST2]ZREP1NAM(nolign-1) = [F:ZREP]REPNAM
+Endif
+Read [F:ZREP]REP0 = [M:CST2]REP2(nolign-1)
+If !fstat Then
+  [M:CST2]ZREP2NAM(nolign-1) = [F:ZREP]REPNAM
+Endif
+Close Local File [ZREP]
 # 06.446.901.fin
 
   #105200 RICAR 2015/05/25 - Inv Cancelation - BEGIN
